@@ -3,6 +3,7 @@
 <head>
     <title>管理中心</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1.min.js"></script>
 </head>
 <body class="container mt-3">
     <div class="d-flex justify-content-between">
@@ -10,13 +11,61 @@
         <a href="/logout" class="btn btn-danger">退出登录</a>
     </div>
     <hr>
-    <!-- 1. 员工管理+Excel导入 -->
+
+    <!-- 1. 员工管理 + Excel导入 -->
     <h5>👥 员工管理</h5>
-    <form action="/import_users" method="post" enctype="multipart/form-data" class="mb-2">
-        <input type="file" name="file" accept=".xlsx" required>
-        <button class="btn btn-success">导入Excel员工</button>
+    <div class="d-flex gap-2 mb-3">
+        <form action="/import_users" method="post" enctype="multipart/form-data" class="d-flex gap-2">
+            <input type="file" name="file" accept=".xlsx" required>
+            <button class="btn btn-success">导入Excel员工</button>
+        </form>
+        <a href="/generate_schedule" class="btn btn-primary">生成排班表</a>
+    </div>
+
+    <!-- 批量删除按钮 -->
+    <form action="/batch_delete_users" method="post" id="batchForm">
+        <button type="submit" class="btn btn-danger mb-3" onclick="return confirm('确定删除选中员工？所有数据将被清空！')">
+            批量删除选中员工
+        </button>
+
+        <!-- 员工列表（带删除功能） -->
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th><input type="checkbox" id="selectAll"> 全选</th>
+                        <th>ID</th>
+                        <th>姓名</th>
+                        <th>账号</th>
+                        <th>组别</th>
+                        <th>角色</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td><input type="checkbox" name="user_ids" value="{{ u.id }}"></td>
+                        <td>{{ u.id }}</td>
+                        <td>{{ u.name }}</td>
+                        <td>{{ u.username }}</td>
+                        <td>{{ u.group }}</td>
+                        <td>{{ u.role }}</td>
+                        <td>
+                            <!-- 单个删除按钮 -->
+                            <form method="post" action="/manage_user" style="display:inline;" onsubmit="return confirm('确定删除该员工？')">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="{{ u.id }}">
+                                <button class="btn btn-sm btn-danger">删除</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </form>
-    <a href="/generate_schedule" class="btn btn-primary mb-3">生成排班表</a>
+
     <hr>
     <!-- 2. 审批中心 -->
     <h5>✅ 换班/请假审批</h5>
@@ -26,7 +75,10 @@
         <a href="/approve_request/{{ req.id }}/通过" class="btn btn-sm btn-success">通过</a>
         <a href="/approve_request/{{ req.id }}/拒绝" class="btn btn-sm btn-danger">拒绝</a>
     </div>
+    {% else %}
+    <p>暂无待审批申请</p>
     {% endfor %}
+
     <hr>
     <!-- 3. 排班统计 -->
     <h5>📊 值班次数统计</h5>
@@ -36,5 +88,12 @@
         <tr><td>{{ s.user_id | user_name }}</td><td>{{ s.group }}</td><td>{{ s.total_count }}</td></tr>
         {% endfor %}
     </table>
+
+    <!-- 全选JS -->
+    <script>
+        $('#selectAll').click(function(){
+            $('input[name="user_ids"]').prop('checked', $(this).prop('checked'));
+        });
+    </script>
 </body>
 </html>
