@@ -149,73 +149,27 @@ def submit_free():
 @login_required
 def submit_request():
     try:
-        # 获取表单数据
         req_type = request.form.get('type', '').strip()
-        schedule_id_str = request.form.get('schedule_id', '')
-        
-        # 校验申请类型
         if not req_type:
             flash('请选择申请类型！')
             return redirect(url_for('staff'))
         
-        # 转换排班ID（为空则设为None）
-        schedule_id = int(schedule_id_str) if schedule_id_str else None
-
-        # 创建申请
+        # 兼容选班/请假/换班
         new_request = ShiftRequest(
             applicant_id=current_user.id,
-            schedule_id=schedule_id,
             type=req_type,
             status='待审批'
         )
         db.session.add(new_request)
         db.session.commit()
         
-        flash('申请提交成功！请等待管理员审批~')
+        flash('选班申请提交成功！等待管理员审批~')
     except Exception as e:
         db.session.rollback()
         flash(f'提交失败：{str(e)}')
     
     return redirect(url_for('staff'))
 
-# 🔥 多选选班：批量提交申请
-@app.route('/batch_submit_select', methods=['POST'])
-@login_required
-def batch_submit_select():
-    try:
-        import json
-        # 获取多选的班次数据
-        selected_data = request.form.get('selected_data', '')
-        if not selected_data:
-            flash('请先选择班次！')
-            return redirect(url_for('staff'))
-        
-        selected_list = json.loads(selected_data)
-        count = 0
-
-        # 批量创建选班申请
-        for item in selected_list:
-            date = item['date']
-            slot = int(item['slot'])
-            
-            # 创建选班申请
-            new_req = ShiftRequest(
-                applicant_id=current_user.id,
-                type='选班',
-                status='待审批',
-                schedule_id=None  # 适配现有数据库
-            )
-            db.session.add(new_req)
-            count += 1
-
-        db.session.commit()
-        flash(f'批量提交成功！共提交 {count} 个选班申请，等待管理员审批~')
-    
-    except Exception as e:
-        db.session.rollback()
-        flash(f'提交失败：{str(e)}')
-    
-    return redirect(url_for('staff'))
 
 # -------------------------- 管理员端 --------------------------
 @app.route('/admin')
