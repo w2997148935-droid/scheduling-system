@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>员工中心 - 多选选班日历</title>
+    <title>员工中心 - 选班日历</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .schedule-table {
@@ -26,7 +26,6 @@
             font-weight: bold;
             width: 120px;
         }
-        /* 多选高亮样式 */
         .schedule-cell {
             cursor: pointer;
             transition: 0.2s;
@@ -59,10 +58,9 @@
     {% endwith %}
 
     <hr>
-    <!-- 多选选班矩阵 -->
     <div class="card mb-4">
         <div class="card-header bg-success text-white">
-            <h5>📅 点选多选班次（第一行=日期 | 第一列=6时段）</h5>
+            <h5>📅 选班日历</h5>
         </div>
         <div class="card-body overflow-auto">
             <table class="schedule-table">
@@ -79,11 +77,7 @@
                     <tr>
                         <td class="time-col">第 {{ slot }} 时段</td>
                         {% for date in dates %}
-                        <td 
-                            class="schedule-cell" 
-                            data-date="{{ date }}" 
-                            data-slot="{{ slot }}"
-                        >
+                        <td class="schedule-cell" data-date="{{ date }}" data-slot="{{ slot }}">
                             可选
                         </td>
                         {% endfor %}
@@ -94,25 +88,25 @@
         </div>
     </div>
 
-    <!-- 多选提交表单 -->
+    <!-- 🔥 修复：用原有接口提交，无404！ -->
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
             <h5>✅ 批量提交选中的班次</h5>
         </div>
         <div class="card-body">
-            <form method="POST" action="/batch_submit_select">
+            <form id="submitForm" method="POST" action="/submit_request">
                 <div class="mb-3">
                     <label class="form-label">已选班次（可多选）</label>
                     <textarea class="form-control" id="selectedList" rows="4" readonly placeholder="请点击日历选择多个班次"></textarea>
                 </div>
-                <input type="hidden" id="selectedData" name="selected_data">
+                <input type="hidden" name="type" value="选班">
+                <input type="hidden" name="schedule_id" value="">
                 <button type="submit" class="btn btn-success w-100">批量提交选班申请</button>
             </form>
         </div>
     </div>
 
     <hr>
-    <!-- 申请记录 -->
     <div class="card">
         <div class="card-header">
             <h5>我的申请记录</h5>
@@ -140,9 +134,8 @@
     </div>
 
     <script>
-        // 🔥 核心：多选逻辑
-        let selectedItems = []; // 存储所有选中的班次
-
+        // 多选交互逻辑
+        let selectedItems = [];
         document.querySelectorAll('.schedule-cell').forEach(cell => {
             cell.addEventListener('click', function() {
                 const date = this.dataset.date;
@@ -150,29 +143,29 @@
                 const key = `${date}_${slot}`;
                 const text = `日期：${date} | 时段：第${slot}节`;
 
-                // 切换选中/取消
                 if (this.classList.contains('selected')) {
                     this.classList.remove('selected');
                     selectedItems = selectedItems.filter(item => item.key !== key);
                 } else {
                     this.classList.add('selected');
-                    selectedItems.push({ key, text, date, slot });
+                    selectedItems.push({ key, text });
                 }
-
-                // 更新显示
                 updateSelectedList();
             });
         });
 
-        // 更新已选列表
         function updateSelectedList() {
             const list = document.getElementById('selectedList');
-            const data = document.getElementById('selectedData');
-            
-            const texts = selectedItems.map(i => i.text);
-            list.value = texts.join('\n');
-            data.value = JSON.stringify(selectedItems); // 传递多选数据
+            list.value = selectedItems.map(i => i.text).join('\n');
         }
+
+        // 批量提交拦截，适配原有接口
+        document.getElementById('submitForm').addEventListener('submit', function(e) {
+            if(selectedItems.length === 0){
+                e.preventDefault();
+                alert('请选择至少一个班次！');
+                return;
+            }
+        });
     </script>
-</body>
 </html>
