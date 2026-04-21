@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>员工中心 - 选班日历</title>
+    <title>员工中心 - 多选选班日历</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        /* 选班矩阵样式 */
         .schedule-table {
             width: 100%;
             border-collapse: collapse;
@@ -27,7 +26,7 @@
             font-weight: bold;
             width: 120px;
         }
-        /* 点选高亮 */
+        /* 多选高亮样式 */
         .schedule-cell {
             cursor: pointer;
             transition: 0.2s;
@@ -39,11 +38,15 @@
         .schedule-cell:hover {
             background: #e3f2fd;
         }
+        .overflow-auto {
+            max-height: 500px;
+            overflow: auto;
+        }
     </style>
 </head>
 <body class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3>选班系统 - {{ current_user.name }}</h3>
+        <h3>多选选班系统 - {{ current_user.name }}</h3>
         <a href="/logout" class="btn btn-danger">退出登录</a>
     </div>
 
@@ -56,10 +59,10 @@
     {% endwith %}
 
     <hr>
-    <!-- 选班日历核心：矩阵表格 -->
+    <!-- 多选选班矩阵 -->
     <div class="card mb-4">
         <div class="card-header bg-success text-white">
-            <h5>📅 点选选班（第一行=日期 | 第一列=时段）</h5>
+            <h5>📅 点选多选班次（第一行=日期 | 第一列=6时段）</h5>
         </div>
         <div class="card-body overflow-auto">
             <table class="schedule-table">
@@ -91,22 +94,19 @@
         </div>
     </div>
 
-    <!-- 选班提交表单 -->
+    <!-- 多选提交表单 -->
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
-            <h5>✅ 提交选班申请</h5>
+            <h5>✅ 批量提交选中的班次</h5>
         </div>
         <div class="card-body">
-            <form method="POST" action="/submit_request">
-                <input type="hidden" name="type" value="选班">
-                <input type="hidden" name="schedule_id" id="selectedScheduleId">
-                
+            <form method="POST" action="/batch_submit_select">
                 <div class="mb-3">
-                    <label class="form-label">已选班次</label>
-                    <input type="text" class="form-control" id="selectedText" readonly placeholder="请点击日历选择班次">
+                    <label class="form-label">已选班次（可多选）</label>
+                    <textarea class="form-control" id="selectedList" rows="4" readonly placeholder="请点击日历选择多个班次"></textarea>
                 </div>
-
-                <button type="submit" class="btn btn-success w-100">提交选班申请</button>
+                <input type="hidden" id="selectedData" name="selected_data">
+                <button type="submit" class="btn btn-success w-100">批量提交选班申请</button>
             </form>
         </div>
     </div>
@@ -140,23 +140,39 @@
     </div>
 
     <script>
-        // 点选选班交互逻辑
-        let selectedCell = null;
+        // 🔥 核心：多选逻辑
+        let selectedItems = []; // 存储所有选中的班次
+
         document.querySelectorAll('.schedule-cell').forEach(cell => {
             cell.addEventListener('click', function() {
-                // 取消上一个选中
-                if(selectedCell) selectedCell.classList.remove('selected');
-                // 选中当前
-                this.classList.add('selected');
-                selectedCell = this;
-                
-                // 获取选择信息
                 const date = this.dataset.date;
                 const slot = this.dataset.slot;
-                document.getElementById('selectedText').value = `日期：${date} | 时段：第${slot}节`;
-                document.getElementById('selectedScheduleId').value = ''; // 适配现有接口
+                const key = `${date}_${slot}`;
+                const text = `日期：${date} | 时段：第${slot}节`;
+
+                // 切换选中/取消
+                if (this.classList.contains('selected')) {
+                    this.classList.remove('selected');
+                    selectedItems = selectedItems.filter(item => item.key !== key);
+                } else {
+                    this.classList.add('selected');
+                    selectedItems.push({ key, text, date, slot });
+                }
+
+                // 更新显示
+                updateSelectedList();
             });
         });
+
+        // 更新已选列表
+        function updateSelectedList() {
+            const list = document.getElementById('selectedList');
+            const data = document.getElementById('selectedData');
+            
+            const texts = selectedItems.map(i => i.text);
+            list.value = texts.join('\n');
+            data.value = JSON.stringify(selectedItems); // 传递多选数据
+        }
     </script>
 </body>
 </html>
