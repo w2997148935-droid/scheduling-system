@@ -164,25 +164,29 @@ def admin():
 def import_users():
     file = request.files['file']
     df = pd.read_excel(file, engine='openpyxl')
-    # 修复：禁用自动刷新，避免ID为空
-    with db.session.no_autoflush():
-        for _, row in df.iterrows():
-            username = str(row['账号'])
-            if not User.query.filter_by(username=username).first():
-                user = User(
-                    username=username,
-                    password=generate_password_hash(str(row['密码'])),
-                    name=row['姓名'],
-                    group=row.get('组别', '默认组')
-                )
-                db.session.add(user)
-                # 关键修复：刷新数据库，生成用户ID
-                db.session.flush()
-                # 现在user.id有值，创建统计不会报错
-                stat = ScheduleStats(user_id=user.id, group=user.group)
-                db.session.add(stat)
+    for _, row in df.iterrows():
+        username = str(row['账号'])
+        # 检查账号是否已存在
+        existing_user = User.query.filter_by(username=username).first()
+        if not existing_user:
+            # 创建用户
+            user = User(
+                username=username,
+                password=generate_password_hash(str(row['密码'])),
+                name=row['姓名'],
+                group=row.get('组别', '默认组')
+            )
+            db.session.add(user)
+            # 强制生成用户ID（核心修复，无语法错误）
+            db.session.flush()
+            
+            # 创建排班统计（user_id 一定有值，不会为空）
+            stat = ScheduleStats(user_id=user.id, group=user.group)
+            db.session.add(stat)
+    
+    # 统一提交
     db.session.commit()
-    flash('员工导入成功')
+    flash('员工导入成功！')
     return redirect(url_for('admin'))
 
 @app.route('/manage_user', methods=['POST'])
@@ -190,17 +194,19 @@ def import_users():
 def manage_user():
     action = request.form['action']
     if action == 'add':
-        with db.session.no_autoflush():
-            user = User(
-                username=request.form['username'],
-                password=generate_password_hash(request.form['password']),
-                name=request.form['name'],
-                group=request.form['group'],
-                role=request.form['role']
-            )
-            db.session.add(user)
-            db.session.flush()
-            db.session.add(ScheduleStats(user_id=user.id, group=user.group))
+        # 创建用户
+        user = User(
+            username=request.form['username'],
+            password=generate_password_hash(request.form['password']),
+            name=request.form['name'],
+            group=request.form['group'],
+            role=request.form['role']
+        )
+        db.session.add(user)
+        db.session.flush()
+        # 添加统计
+        db.session.add(ScheduleStats(user_id=user.id, group=user.group))
+
     elif action == 'edit':
         user = User.query.get(request.form['id'])
         user.name = request.form['name']
@@ -208,8 +214,10 @@ def manage_user():
         user.role = request.form['role']
         if request.form['password']:
             user.password = generate_password_hash(request.form['password'])
+
     elif action == 'delete':
         User.query.filter_by(id=request.form['id']).delete()
+        
     db.session.commit()
     return redirect(url_for('admin'))
 
