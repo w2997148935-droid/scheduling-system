@@ -73,6 +73,12 @@ class ShiftRequest(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# 模板过滤器：显示用户名（必加，否则管理员页报错）
+@app.template_filter('user_name')
+def get_user_name(user_id):
+    user = User.query.get(user_id)
+    return user.name if user else '未知用户'
+
 # -------------------------- 公共路由 --------------------------
 @app.route('/')
 def index():
