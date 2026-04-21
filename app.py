@@ -154,10 +154,10 @@ def submit_request():
             flash('请选择申请类型！')
             return redirect(url_for('staff'))
         
-        # 🔥 核心修复：强制给 schedule_id 赋值 0，绕过非空约束
+        # ✅ 正确写法：schedule_id 传 None（现在数据库允许为空）
         new_request = ShiftRequest(
             applicant_id=current_user.id,
-            schedule_id=0,  # 这里！填0就不会为空了
+            schedule_id=None,  # 留空即可
             type=req_type,
             status='待审批'
         )
@@ -170,7 +170,6 @@ def submit_request():
         flash(f'提交失败：{str(e)}')
     
     return redirect(url_for('staff'))
-
 
 # -------------------------- 管理员端 --------------------------
 @app.route('/admin')
@@ -353,12 +352,43 @@ def batch_delete_users():
     return redirect(url_for('admin'))
 
 # 初始化数据库
+# 初始化数据库 + 修复表结构（彻底解决约束报错）
 with app.app_context():
     db.create_all()
-    if not User.query.filter_by(username='admin').first():
-        db.session.add(User(username='admin', password=generate_password_hash('admin123'), name='超级管理员', role='admin'))
+    # 🔥 执行原生SQL：修改 schedule_id 允许为空，删除外键严格约束
+    try:
+        # 1. 允许 schedule_id 为空
+        db.engine.execute('ALTER TABLE shift_request ALTER COLUMN schedule_id DROP NOT NULL;')
+        # 2. （可选）删除外键约束（如果需要完全自由）
+        # db.engine.execute('ALTER TABLE shift_request DROP CONSTRAINT IF EXISTS shift_request_schedule_id_fkey;')
         db.session.commit()
-
+    except:
+        db.session.rollback()
+    
+    # 超级管理员
+    if not User.query.filter_by(username='admin').first():
+        db.session.add(User(
+            username='admin',
+            password=generate_password_hash('admin123'),
+            name='超级管理员',
+            role='admin',
+            status=True
+        ))
+    # 测试员工
+    if not User.query.filter_by(username='test01').first():
+        test_user = User(
+            username='test01',
+            password=generate_password_hash('123456'),
+            name='测试员工',
+            role='staff',
+            status=True
+        )
+        db.session.add(test_user)
+        db.session.flush()
+        db.session.add(ScheduleStats(user_id=test_user.id, group='测试组'))
+    
+    db.session.commit()
+    
 # 启动服务（Render端口兼容）
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
