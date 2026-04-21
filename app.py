@@ -11,20 +11,26 @@ from werkzeug.security import generate_password_hash, check_password_hash
 load_dotenv()
 app = Flask(__name__)
 
-# 核心配置（修复端口+环境变量兼容）
+# 核心配置（自动修复PostgreSQL协议，适配Python3.14）
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'test123456')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+# 🔥 关键修复：自动替换数据库协议，解决psycopg2缺失报错
+raw_db_url = os.getenv('DATABASE_URL')
+if raw_db_url and raw_db_url.startswith('postgresql://'):
+    raw_db_url = raw_db_url.replace('postgresql://', 'postgresql+psycopg://')
+app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# 环境变量默认值，防止None报错
 app.config['MAX_WORK_SLOTS'] = int(os.getenv('MAX_WORK_HOURS_PER_DAY', '2'))
 app.config['TIME_SLOTS'] = int(os.getenv('TOTAL_TIME_SLOTS', '6'))
 
-# 数据库初始化
+# 初始化组件
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# 修复模板过滤器（必加，解决管理员页报错）
+# 模板过滤器（修复管理员页显示）
 @app.template_filter('user_name')
 def get_user_name(user_id):
     user = User.query.get(user_id)
@@ -99,7 +105,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# -------------------------- 员工端路由 --------------------------
+# -------------------------- 员工端 --------------------------
 @app.route('/staff')
 @login_required
 def staff():
@@ -119,7 +125,6 @@ def submit_free():
     date = datetime.strptime(data['date'], '%Y-%m-%d').date()
     slot = int(data['slot'])
     is_free = data['is_free']
-    
     free = FreeTime.query.filter_by(user_id=current_user.id, date=date, slot=slot).first()
     if free:
         free.is_free = is_free
@@ -135,19 +140,13 @@ def submit_request():
     schedule_id = request.form['schedule_id']
     req_type = request.form['type']
     target_user_id = request.form.get('target_user_id')
-    
-    req = ShiftRequest(
-        applicant_id=current_user.id,
-        schedule_id=schedule_id,
-        target_user_id=target_user_id,
-        type=req_type
-    )
+    req = ShiftRequest(applicant_id=current_user.id, schedule_id=schedule_id, target_user_id=target_user_id, type=req_type)
     db.session.add(req)
     db.session.commit()
     flash('申请提交成功，等待管理员审批')
     return redirect(url_for('staff'))
 
-# -------------------------- 管理员端路由 --------------------------
+# -------------------------- 管理员端 --------------------------
 @app.route('/admin')
 @login_required
 def admin():
@@ -158,8 +157,7 @@ def admin():
     stats = ScheduleStats.query.all()
     requests = ShiftRequest.query.filter_by(status='待审批').all()
     schedules = Schedule.query.all()
-    free_count = FreeTime.query.count()
-    return render_template('admin.html', user=current_user, users=users, stats=stats, requests=requests, schedules=schedules, free_count=free_count)
+    return render_template('admin.html', user=current_user, users=users, stats=stats, requests=requests, schedules=schedules)
 
 @app.route('/import_users', methods=['POST'])
 @login_required
@@ -169,15 +167,9 @@ def import_users():
     for _, row in df.iterrows():
         username = str(row['账号'])
         if not User.query.filter_by(username=username).first():
-            user = User(
-                username=username,
-                password=generate_password_hash(str(row['密码'])),
-                name=row['姓名'],
-                group=row.get('组别', '默认组')
-            )
+            user = User(username=username, password=generate_password_hash(str(row['密码'])), name=row['姓名'], group=row.get('组别', '默认组'))
             db.session.add(user)
-            stat = ScheduleStats(user_id=user.id, group=user.group)
-            db.session.add(stat)
+            db.session.add(ScheduleStats(user_id=user.id, group=user.group))
     db.session.commit()
     flash('员工导入成功')
     return redirect(url_for('admin'))
@@ -187,13 +179,7 @@ def import_users():
 def manage_user():
     action = request.form['action']
     if action == 'add':
-        user = User(
-            username=request.form['username'],
-            password=generate_password_hash(request.form['password']),
-            name=request.form['name'],
-            group=request.form['group'],
-            role=request.form['role']
-        )
+        user = User(username=request.form['username'], password=generate_password_hash(request.form['password']), name=request.form['name'], group=request.form['group'], role=request.form['role'])
         db.session.add(user)
         db.session.add(ScheduleStats(user_id=user.id, group=user.group))
     elif action == 'edit':
@@ -228,44 +214,31 @@ def generate_schedule():
     if FreeTime.query.count() == 0:
         flash('请等待员工提交空闲时间后再生成排班')
         return redirect(url_for('admin'))
-    
     Schedule.query.delete()
     dates = [datetime.now().date() + timedelta(days=i) for i in range(30)]
     slots = range(1, app.config['TIME_SLOTS']+1)
     group_users = {}
-    
     for user in User.query.filter_by(role='staff', status=True).all():
         group = user.group
         if group not in group_users:
             group_users[group] = []
         group_users[group].append(user)
-    
     for date in dates:
         for slot in slots:
             for group, users in group_users.items():
                 candidates = []
                 for user in users:
                     free = FreeTime.query.filter_by(user_id=user.id, date=date, slot=slot, is_free=True).first()
-                    if not free:
-                        continue
-                    daily_schedule = Schedule.query.filter_by(user_id=user.id, date=date).count()
-                    if daily_schedule >= app.config['MAX_WORK_SLOTS']:
-                        continue
+                    if not free: continue
+                    if Schedule.query.filter_by(user_id=user.id, date=date).count() >= app.config['MAX_WORK_SLOTS']: continue
                     stat = ScheduleStats.query.filter_by(user_id=user.id).first()
                     candidates.append((user, stat.total_count if stat else 0))
-                
-                if not candidates:
-                    continue
-                candidates.sort(key=lambda x: x[1])
-                target_user = candidates[0][0]
-                
-                schedule = Schedule(user_id=target_user.id, date=date, slot=slot)
-                db.session.add(schedule)
-                
-                stat = ScheduleStats.query.filter_by(user_id=target_user.id).first()
-                stat.total_count += 1
-                stat.group = group
-    
+                if candidates:
+                    candidates.sort(key=lambda x: x[1])
+                    target = candidates[0][0]
+                    db.session.add(Schedule(user_id=target.id, date=date, slot=slot))
+                    stat = ScheduleStats.query.filter_by(user_id=target.id).first()
+                    stat.total_count += 1
     db.session.commit()
     flash('排班表生成成功！')
     return redirect(url_for('admin'))
@@ -274,16 +247,10 @@ def generate_schedule():
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
-        admin = User(
-            username='admin',
-            password=generate_password_hash('admin123'),
-            name='超级管理员',
-            role='admin'
-        )
-        db.session.add(admin)
+        db.session.add(User(username='admin', password=generate_password_hash('admin123'), name='超级管理员', role='admin'))
         db.session.commit()
 
+# 启动服务（Render端口兼容）
 if __name__ == '__main__':
-    # 修复Render端口检测（核心！云端必须绑定0.0.0.0）
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
