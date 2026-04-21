@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 
 # 加载环境变量
 load_dotenv()
@@ -76,6 +77,7 @@ class ShiftRequest(db.Model):
     type = db.Column(db.String(20), nullable=False)
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 # -------------------------- 登录管理 --------------------------
 @login_manager.user_loader
