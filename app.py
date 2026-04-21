@@ -163,30 +163,40 @@ def admin():
 @login_required
 def import_users():
     file = request.files['file']
-    df = pd.read_excel(file, engine='openpyxl')
+    # 低版本Excel兼容，强制读取文本
+    df = pd.read_excel(file, engine='openpyxl', dtype=str)
+    # 清理列名：去除空格
+    df.columns = df.columns.str.strip()
+    
     for _, row in df.iterrows():
-        username = str(row['账号'])
+        # 🔥 核心修复：强制清理 账号/密码/姓名 的首尾空格（解决登录失败！）
+        username = str(row['账号']).strip()
+        password_raw = str(row['密码']).strip()
+        name = str(row['姓名']).strip()
+        group = str(row.get('组别', '默认组')).strip()
+
+        # 校验：账号密码不能为空
+        if not username or not password_raw:
+            continue
+        
         # 检查账号是否已存在
         existing_user = User.query.filter_by(username=username).first()
         if not existing_user:
-            # 创建用户
+            # 创建用户（密码正确加密）
             user = User(
                 username=username,
-                password=generate_password_hash(str(row['密码'])),
-                name=row['姓名'],
-                group=row.get('组别', '默认组')
+                password=generate_password_hash(password_raw),
+                name=name,
+                group=group
             )
             db.session.add(user)
-            # 强制生成用户ID（核心修复，无语法错误）
             db.session.flush()
-            
-            # 创建排班统计（user_id 一定有值，不会为空）
+            # 创建统计
             stat = ScheduleStats(user_id=user.id, group=user.group)
             db.session.add(stat)
     
-    # 统一提交
     db.session.commit()
-    flash('员工导入成功！')
+    flash('员工导入成功！账号密码已自动格式化，可直接登录！')
     return redirect(url_for('admin'))
 
 @app.route('/manage_user', methods=['POST'])
