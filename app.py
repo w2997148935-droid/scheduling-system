@@ -164,12 +164,23 @@ def admin():
 def import_users():
     file = request.files['file']
     df = pd.read_excel(file, engine='openpyxl')
-    for _, row in df.iterrows():
-        username = str(row['账号'])
-        if not User.query.filter_by(username=username).first():
-            user = User(username=username, password=generate_password_hash(str(row['密码'])), name=row['姓名'], group=row.get('组别', '默认组'))
-            db.session.add(user)
-            db.session.add(ScheduleStats(user_id=user.id, group=user.group))
+    # 修复：禁用自动刷新，避免ID为空
+    with db.session.no_autoflush():
+        for _, row in df.iterrows():
+            username = str(row['账号'])
+            if not User.query.filter_by(username=username).first():
+                user = User(
+                    username=username,
+                    password=generate_password_hash(str(row['密码'])),
+                    name=row['姓名'],
+                    group=row.get('组别', '默认组')
+                )
+                db.session.add(user)
+                # 关键修复：刷新数据库，生成用户ID
+                db.session.flush()
+                # 现在user.id有值，创建统计不会报错
+                stat = ScheduleStats(user_id=user.id, group=user.group)
+                db.session.add(stat)
     db.session.commit()
     flash('员工导入成功')
     return redirect(url_for('admin'))
@@ -179,9 +190,17 @@ def import_users():
 def manage_user():
     action = request.form['action']
     if action == 'add':
-        user = User(username=request.form['username'], password=generate_password_hash(request.form['password']), name=request.form['name'], group=request.form['group'], role=request.form['role'])
-        db.session.add(user)
-        db.session.add(ScheduleStats(user_id=user.id, group=user.group))
+        with db.session.no_autoflush():
+            user = User(
+                username=request.form['username'],
+                password=generate_password_hash(request.form['password']),
+                name=request.form['name'],
+                group=request.form['group'],
+                role=request.form['role']
+            )
+            db.session.add(user)
+            db.session.flush()
+            db.session.add(ScheduleStats(user_id=user.id, group=user.group))
     elif action == 'edit':
         user = User.query.get(request.form['id'])
         user.name = request.form['name']
