@@ -77,7 +77,6 @@ class ShiftRequest(db.Model):
     type = db.Column(db.String(20), nullable=False)
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
 
 # -------------------------- 登录管理 --------------------------
 @login_manager.user_loader
