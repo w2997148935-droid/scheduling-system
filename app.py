@@ -147,13 +147,34 @@ def submit_free():
 @app.route('/submit_request', methods=['POST'])
 @login_required
 def submit_request():
-    schedule_id = request.form['schedule_id']
-    req_type = request.form['type']
-    target_user_id = request.form.get('target_user_id')
-    req = ShiftRequest(applicant_id=current_user.id, schedule_id=schedule_id, target_user_id=target_user_id, type=req_type)
-    db.session.add(req)
-    db.session.commit()
-    flash('申请提交成功，等待管理员审批')
+    try:
+        # 获取表单数据
+        req_type = request.form.get('type', '').strip()
+        schedule_id_str = request.form.get('schedule_id', '')
+        
+        # 校验申请类型
+        if not req_type:
+            flash('请选择申请类型！')
+            return redirect(url_for('staff'))
+        
+        # 转换排班ID（为空则设为None）
+        schedule_id = int(schedule_id_str) if schedule_id_str else None
+
+        # 创建申请
+        new_request = ShiftRequest(
+            applicant_id=current_user.id,
+            schedule_id=schedule_id,
+            type=req_type,
+            status='待审批'
+        )
+        db.session.add(new_request)
+        db.session.commit()
+        
+        flash('申请提交成功！请等待管理员审批~')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'提交失败：{str(e)}')
+    
     return redirect(url_for('staff'))
 
 # -------------------------- 管理员端 --------------------------
