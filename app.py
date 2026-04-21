@@ -216,15 +216,18 @@ def manage_user():
             user.password = generate_password_hash(request.form['password'])
 
     elif action == 'delete':
-        # 单个删除员工 + 级联删除所有关联数据
-        user_id = request.form['id']
-        # 删除关联数据
+        user_id = int(request.form['id'])
+        # 🔥 核心保护：禁止删除超级管理员（ID=1）
+        if user_id == 1:
+            flash('错误：超级管理员无法被删除！')
+            return redirect(url_for('admin'))
+        
+        # 级联删除普通员工数据
         FreeTime.query.filter_by(user_id=user_id).delete()
         Schedule.query.filter_by(user_id=user_id).delete()
         ScheduleStats.query.filter_by(user_id=user_id).delete()
         ShiftRequest.query.filter_by(applicant_id=user_id).delete()
         ShiftRequest.query.filter_by(approve_user_id=user_id).delete()
-        # 删除用户
         User.query.filter_by(id=user_id).delete()
         
     db.session.commit()
@@ -280,6 +283,7 @@ def generate_schedule():
     return redirect(url_for('admin'))
 
 # 批量删除员工
+# 批量删除员工
 @app.route('/batch_delete_users', methods=['POST'])
 @login_required
 def batch_delete_users():
@@ -287,20 +291,27 @@ def batch_delete_users():
         flash('无权限')
         return redirect(url_for('admin'))
     
-    # 获取选中的员工ID列表
     user_ids = request.form.getlist('user_ids')
+    deleted_count = 0
+    
     if user_ids:
-        for user_id in user_ids:
-            # 级联删除所有关联数据
+        for user_id_str in user_ids:
+            user_id = int(user_id_str)
+            # 🔥 核心保护：跳过超级管理员，不执行删除
+            if user_id == 1:
+                continue
+            
+            # 删除普通员工关联数据
             FreeTime.query.filter_by(user_id=user_id).delete()
             Schedule.query.filter_by(user_id=user_id).delete()
             ScheduleStats.query.filter_by(user_id=user_id).delete()
             ShiftRequest.query.filter_by(applicant_id=user_id).delete()
             ShiftRequest.query.filter_by(approve_user_id=user_id).delete()
-            # 删除用户
             User.query.filter_by(id=user_id).delete()
+            deleted_count += 1
+        
         db.session.commit()
-        flash(f'成功删除 {len(user_ids)} 名员工！')
+        flash(f'成功删除 {deleted_count} 名员工！（超级管理员已自动保护）')
     else:
         flash('请选择要删除的员工')
     return redirect(url_for('admin'))
