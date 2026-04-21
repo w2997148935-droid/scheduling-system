@@ -1,30 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>员工中心 - 排班日历</title>
+    <title>员工中心 - 选班日历</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .calendar-day {
+        /* 选班矩阵样式 */
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .schedule-table th, .schedule-table td {
             border: 1px solid #ddd;
-            min-height: 80px;
-            padding: 8px;
-            margin-bottom: 10px;
-            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            vertical-align: middle;
         }
-        .calendar-day.has-schedule {
-            background-color: #e3f2fd;
-            border-color: #2196f3;
+        .schedule-table th {
+            background: #2196f3;
+            color: white;
+            position: sticky;
+            top: 0;
         }
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 8px;
+        .time-col {
+            background: #f8f9fa;
+            font-weight: bold;
+            width: 120px;
+        }
+        /* 点选高亮 */
+        .schedule-cell {
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .schedule-cell.selected {
+            background: #4CAF50;
+            color: white;
+        }
+        .schedule-cell:hover {
+            background: #e3f2fd;
         }
     </style>
 </head>
 <body class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3>欢迎你，{{ current_user.name }}</h3>
+        <h3>选班系统 - {{ current_user.name }}</h3>
         <a href="/logout" class="btn btn-danger">退出登录</a>
     </div>
 
@@ -37,62 +56,58 @@
     {% endwith %}
 
     <hr>
-    <!-- 提交申请表单（保留） -->
+    <!-- 选班日历核心：矩阵表格 -->
     <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5>提交请假/换班/加班申请</h5>
+        <div class="card-header bg-success text-white">
+            <h5>📅 点选选班（第一行=日期 | 第一列=时段）</h5>
         </div>
-        <div class="card-body">
-            <form method="POST" action="/submit_request">
-                <div class="mb-3">
-                    <label class="form-label">申请类型</label>
-                    <select name="type" class="form-select" required>
-                        <option value="">请选择类型</option>
-                        <option value="请假">请假</option>
-                        <option value="换班">换班</option>
-                        <option value="加班">加班</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">关联排班（可选）</label>
-                    <select name="schedule_id" class="form-select">
-                        <option value="">无</option>
-                        {% for s in schedules %}
-                        <option value="{{ s.id }}">{{ s.date }} - 第{{ s.slot }}节</option>
+        <div class="card-body overflow-auto">
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th>时间段</th>
+                        {% for date in dates %}
+                        <th>{{ date }}</th>
                         {% endfor %}
-                    </select>
-                </div>
-                <button type="submit" class="btn btn-success">提交申请</button>
-            </form>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for slot in range(1,7) %}
+                    <tr>
+                        <td class="time-col">第 {{ slot }} 时段</td>
+                        {% for date in dates %}
+                        <td 
+                            class="schedule-cell" 
+                            data-date="{{ date }}" 
+                            data-slot="{{ slot }}"
+                        >
+                            可选
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 
-    <hr>
-    <!-- 🔥 排班日历（已恢复！可视化网格日历） -->
+    <!-- 选班提交表单 -->
     <div class="card mb-4">
-        <div class="card-header bg-success text-white">
-            <h5>我的排班日历</h5>
+        <div class="card-header bg-primary text-white">
+            <h5>✅ 提交选班申请</h5>
         </div>
         <div class="card-body">
-            <div class="calendar-grid">
-                {% for date in dates %}
-                {% set has_schedule = [] %}
-                {% for s in schedules if s.date == date %}
-                {% set _ = has_schedule.append(1) %}
-                {% endfor %}
-                <div class="calendar-day {% if has_schedule %}has-schedule{% endif %}">
-                    <small>{{ date }}</small>
-                    {% for s in schedules if s.date == date %}
-                    <div class="mt-1">
-                        <span class="badge bg-primary">第{{ s.slot }}节</span>
-                    </div>
-                    {% endfor %}
+            <form method="POST" action="/submit_request">
+                <input type="hidden" name="type" value="选班">
+                <input type="hidden" name="schedule_id" id="selectedScheduleId">
+                
+                <div class="mb-3">
+                    <label class="form-label">已选班次</label>
+                    <input type="text" class="form-control" id="selectedText" readonly placeholder="请点击日历选择班次">
                 </div>
-                {% endfor %}
-            </div>
-            <div class="mt-2">
-                <small class="text-muted">🔹 蓝色背景：当日有排班</small>
-            </div>
+
+                <button type="submit" class="btn btn-success w-100">提交选班申请</button>
+            </form>
         </div>
     </div>
 
@@ -117,13 +132,31 @@
                         <td>{{ r.status }}</td>
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="2" class="text-center">暂无申请</td>
-                    </tr>
+                    <tr><td colspan="2" class="text-center">暂无申请</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
+
+    <script>
+        // 点选选班交互逻辑
+        let selectedCell = null;
+        document.querySelectorAll('.schedule-cell').forEach(cell => {
+            cell.addEventListener('click', function() {
+                // 取消上一个选中
+                if(selectedCell) selectedCell.classList.remove('selected');
+                // 选中当前
+                this.classList.add('selected');
+                selectedCell = this;
+                
+                // 获取选择信息
+                const date = this.dataset.date;
+                const slot = this.dataset.slot;
+                document.getElementById('selectedText').value = `日期：${date} | 时段：第${slot}节`;
+                document.getElementById('selectedScheduleId').value = ''; // 适配现有接口
+            });
+        });
+    </script>
 </body>
 </html>
