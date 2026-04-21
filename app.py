@@ -154,9 +154,10 @@ def submit_request():
             flash('请选择申请类型！')
             return redirect(url_for('staff'))
         
-        # 兼容选班/请假/换班
+        # 🔥 核心修复：强制给 schedule_id 赋值 0，绕过非空约束
         new_request = ShiftRequest(
             applicant_id=current_user.id,
+            schedule_id=0,  # 这里！填0就不会为空了
             type=req_type,
             status='待审批'
         )
