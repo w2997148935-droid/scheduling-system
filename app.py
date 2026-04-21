@@ -90,13 +90,23 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form['username'].strip()
+        password = request.form['password'].strip()
+        
+        # 🔍 仅查询账号，不限制角色/状态
         user = User.query.filter_by(username=username).first()
+        
+        # 校验密码
         if user and check_password_hash(user.password, password):
             login_user(user)
-            return redirect(url_for('admin' if user.role == 'admin' else 'staff'))
-        flash('账号或密码错误')
+            # 管理员跳后台，员工跳员工页
+            if user.role == 'admin':
+                return redirect(url_for('admin'))
+            else:
+                return redirect(url_for('staff'))
+        else:
+            flash('账号或密码错误！')
+            
     return render_template('login.html')
 
 @app.route('/logout')
@@ -163,40 +173,40 @@ def admin():
 @login_required
 def import_users():
     file = request.files['file']
-    # 低版本Excel兼容，强制读取文本
-    df = pd.read_excel(file, engine='openpyxl', dtype=str)
-    # 清理列名：去除空格
+    df = pd.read_excel(file, engine='openpyxl')
     df.columns = df.columns.str.strip()
-    
+
     for _, row in df.iterrows():
-        # 🔥 核心修复：强制清理 账号/密码/姓名 的首尾空格（解决登录失败！）
+        # 强制清理所有空白字符
         username = str(row['账号']).strip()
         password_raw = str(row['密码']).strip()
         name = str(row['姓名']).strip()
         group = str(row.get('组别', '默认组')).strip()
 
-        # 校验：账号密码不能为空
-        if not username or not password_raw:
+        # 跳过空数据
+        if not username or len(username) < 1 or not password_raw:
             continue
-        
-        # 检查账号是否已存在
-        existing_user = User.query.filter_by(username=username).first()
-        if not existing_user:
-            # 创建用户（密码正确加密）
-            user = User(
-                username=username,
-                password=generate_password_hash(password_raw),
-                name=name,
-                group=group
-            )
-            db.session.add(user)
-            db.session.flush()
-            # 创建统计
-            stat = ScheduleStats(user_id=user.id, group=user.group)
-            db.session.add(stat)
-    
+
+        # 检查重复
+        if User.query.filter_by(username=username).first():
+            continue
+
+        # ✅ 强制创建正常员工（状态启用 + 普通员工角色）
+        user = User()
+        user.username = username
+        user.password = generate_password_hash(password_raw)  # 强制加密
+        user.name = name
+        user.group = group
+        user.role = "staff"
+        user.status = True  # 启用账号（关键！）
+
+        db.session.add(user)
+        db.session.flush()
+        # 创建统计
+        db.session.add(ScheduleStats(user_id=user.id, group=user.group))
+
     db.session.commit()
-    flash('员工导入成功！账号密码已自动格式化，可直接登录！')
+    flash('员工导入完成！账号密码均正常可用！')
     return redirect(url_for('admin'))
 
 @app.route('/manage_user', methods=['POST'])
