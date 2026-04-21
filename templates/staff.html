@@ -11,7 +11,6 @@
         <a href="/logout" class="btn btn-danger">退出登录</a>
     </div>
 
-    <!-- flash 提示信息 -->
     {% with messages = get_flashed_messages() %}
         {% if messages %}
             {% for msg in messages %}
@@ -21,7 +20,6 @@
     {% endwith %}
 
     <hr>
-    <!-- 🔥 核心：提交请假/换班申请表单（修复无法提交问题） -->
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
             <h5>提交加班/换班/请假申请</h5>
@@ -39,13 +37,11 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">关联排班（如需更换/请假请选择）</label>
+                    <label class="form-label">关联排班</label>
                     <select name="schedule_id" class="form-select">
-                        <option value="">无（直接申请）</option>
+                        <option value="">无</option>
                         {% for s in schedules %}
-                            <option value="{{ s.id }}">
-                                日期：{{ s.date }} | 时段：第{{ s.slot }}节
-                            </option>
+                            <option value="{{ s.id }}">日期：{{ s.date }} | 第{{ s.slot }}节</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -56,7 +52,6 @@
     </div>
 
     <hr>
-    <!-- 我的排班 -->
     <div class="card">
         <div class="card-header">
             <h5>我的排班</h5>
@@ -79,9 +74,7 @@
                             <td>{{ s.status }}</td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="3" class="text-center">暂无排班</td>
-                        </tr>
+                        <tr><td colspan="3" class="text-center">暂无排班</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -90,7 +83,6 @@
     </div>
 
     <hr>
-    <!-- 我的申请记录 -->
     <div class="card mt-4">
         <div class="card-header">
             <h5>我的申请记录</h5>
@@ -101,7 +93,6 @@
                     <thead>
                         <tr>
                             <th>申请类型</th>
-                            <th>申请时间</th>
                             <th>审批状态</th>
                         </tr>
                     </thead>
@@ -109,13 +100,10 @@
                         {% for r in requests %}
                         <tr>
                             <td>{{ r.type }}</td>
-                            <td>{{ r.created_at if r.created_at else '无' }}</td>
                             <td>{{ r.status }}</td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="3" class="text-center">暂无申请记录</td>
-                        </tr>
+                        <tr><td colspan="2" class="text-center">暂无申请记录</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
