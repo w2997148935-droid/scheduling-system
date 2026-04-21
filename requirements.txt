@@ -1,8 +1,7 @@
-# Python3.14 100%兼容 无冲突版本
 Flask==3.0.3
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
-# 替换为Python3.14兼容的PostgreSQL驱动（核心修复）
+# Python3.14 唯一兼容的PostgreSQL驱动
 psycopg==3.1.18
 pandas==2.2.3
 openpyxl==3.1.5
