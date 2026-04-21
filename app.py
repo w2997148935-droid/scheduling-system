@@ -1,0 +1,307 @@
+import os
+import pandas as pd
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# 加载环境变量
+load_dotenv()
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_WORK_SLOTS'] = int(os.getenv('MAX_WORK_HOURS_PER_DAY'))
+app.config['TIME_SLOTS'] = int(os.getenv('TOTAL_TIME_SLOTS'))
+
+# 数据库初始化
+db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# -------------------------- 数据库模型（PostgreSQL）--------------------------
+# 1. 用户表（员工/管理员）
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)  # 账号
+    password = db.Column(db.String(200), nullable=False)  # 密码哈希
+    name = db.Column(db.String(50), nullable=False)  # 姓名
+    group = db.Column(db.String(50), default='默认组')  # 组别
+    role = db.Column(db.String(20), default='staff')  # admin/staff
+    status = db.Column(db.Boolean, default=True)
+
+# 2. 空闲时间表（员工提交）
+class FreeTime(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)  # 日期
+    slot = db.Column(db.Integer, nullable=False)  # 1-6时段
+    is_free = db.Column(db.Boolean, default=True)  # 是否空闲
+    __table_args__ = (db.UniqueConstraint('user_id', 'date', 'slot'),)
+
+# 3. 排班表
+class Schedule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    slot = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), default='正常')  # 正常/换班/请假
+    __table_args__ = (db.UniqueConstraint('user_id', 'date', 'slot'),)
+
+# 4. 排班统计表
+class ScheduleStats(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    total_count = db.Column(db.Integer, default=0)  # 总值班次数
+    group = db.Column(db.String(50))
+
+# 5. 换班/请假申请表
+class ShiftRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    applicant_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    target_user_id = db.Column(db.Integer, nullable=True)  # 换班目标人
+    type = db.Column(db.String(20), nullable=False)  # 换班/调班/请假
+    status = db.Column(db.String(20), default='待审批')  # 待审批/通过/拒绝
+    approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+# -------------------------- 登录管理 --------------------------
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# -------------------------- 公共路由 --------------------------
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            login_user(user)
+            return redirect(url_for('admin' if user.role == 'admin' else 'staff'))
+        flash('账号或密码错误')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# -------------------------- 员工端路由 --------------------------
+@app.route('/staff')
+@login_required
+def staff():
+    if current_user.role != 'staff':
+        return redirect(url_for('admin'))
+    # 获取未来30天日期
+    dates = [datetime.now().date() + timedelta(days=i) for i in range(30)]
+    # 获取员工已提交的空闲时间
+    free_times = FreeTime.query.filter_by(user_id=current_user.id).all()
+    free_data = {(f.date, f.slot): f.is_free for f in free_times}
+    # 获取员工排班
+    schedules = Schedule.query.filter_by(user_id=current_user.id).all()
+    # 获取申请记录
+    requests = ShiftRequest.query.filter_by(applicant_id=current_user.id).all()
+    return render_template('staff.html', user=current_user, dates=dates, slots=range(1, app.config['TIME_SLOTS']+1), free_data=free_data, schedules=schedules, requests=requests)
+
+# 提交空闲时间
+@app.route('/submit_free', methods=['POST'])
+@login_required
+def submit_free():
+    data = request.json
+    date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+    slot = int(data['slot'])
+    is_free = data['is_free']
+    
+    free = FreeTime.query.filter_by(user_id=current_user.id, date=date, slot=slot).first()
+    if free:
+        free.is_free = is_free
+    else:
+        free = FreeTime(user_id=current_user.id, date=date, slot=slot, is_free=is_free)
+        db.session.add(free)
+    db.session.commit()
+    return jsonify({'success': True})
+
+# 提交换班/请假申请
+@app.route('/submit_request', methods=['POST'])
+@login_required
+def submit_request():
+    schedule_id = request.form['schedule_id']
+    req_type = request.form['type']
+    target_user_id = request.form.get('target_user_id')
+    
+    req = ShiftRequest(
+        applicant_id=current_user.id,
+        schedule_id=schedule_id,
+        target_user_id=target_user_id,
+        type=req_type
+    )
+    db.session.add(req)
+    db.session.commit()
+    flash('申请提交成功，等待管理员审批')
+    return redirect(url_for('staff'))
+
+# -------------------------- 管理员端路由 --------------------------
+@app.route('/admin')
+@login_required
+def admin():
+    if current_user.role != 'admin':
+        flash('无管理员权限')
+        return redirect(url_for('staff'))
+    users = User.query.all()
+    stats = ScheduleStats.query.all()
+    requests = ShiftRequest.query.filter_by(status='待审批').all()
+    schedules = Schedule.query.all()
+    free_count = FreeTime.query.count()
+    return render_template('admin.html', user=current_user, users=users, stats=stats, requests=requests, schedules=schedules, free_count=free_count)
+
+# Excel导入员工
+@app.route('/import_users', methods=['POST'])
+@login_required
+def import_users():
+    file = request.files['file']
+    df = pd.read_excel(file, engine='openpyxl')
+    for _, row in df.iterrows():
+        username = str(row['账号'])
+        if not User.query.filter_by(username=username).first():
+            user = User(
+                username=username,
+                password=generate_password_hash(str(row['密码'])),
+                name=row['姓名'],
+                group=row.get('组别', '默认组')
+            )
+            db.session.add(user)
+            # 初始化统计
+            stat = ScheduleStats(user_id=user.id, group=user.group)
+            db.session.add(stat)
+    db.session.commit()
+    flash('员工导入成功')
+    return redirect(url_for('admin'))
+
+# 增删改员工
+@app.route('/manage_user', methods=['POST'])
+@login_required
+def manage_user():
+    action = request.form['action']
+    if action == 'add':
+        user = User(
+            username=request.form['username'],
+            password=generate_password_hash(request.form['password']),
+            name=request.form['name'],
+            group=request.form['group'],
+            role=request.form['role']
+        )
+        db.session.add(user)
+        db.session.add(ScheduleStats(user_id=user.id, group=user.group))
+    elif action == 'edit':
+        user = User.query.get(request.form['id'])
+        user.name = request.form['name']
+        user.group = request.form['group']
+        user.role = request.form['role']
+        if request.form['password']:
+            user.password = generate_password_hash(request.form['password'])
+    elif action == 'delete':
+        User.query.filter_by(id=request.form['id']).delete()
+    db.session.commit()
+    return redirect(url_for('admin'))
+
+# 审批换班/请假
+@app.route('/approve_request/<int:req_id>/<status>')
+@login_required
+def approve_request(req_id, status):
+    req = ShiftRequest.query.get(req_id)
+    req.status = status
+    req.approve_user_id = current_user.id
+    # 审批通过后更新排班状态
+    if status == '通过':
+        schedule = Schedule.query.get(req.schedule_id)
+        schedule.status = req.type
+        if req.type == '换班' and req.target_user_id:
+            schedule.user_id = req.target_user_id
+    db.session.commit()
+    return redirect(url_for('admin'))
+
+# 智能排班核心算法（满足：空闲时间+平均次数+单日时长限制）
+@app.route('/generate_schedule')
+@login_required
+def generate_schedule():
+    if FreeTime.query.count() == 0:
+        flash('请等待员工提交空闲时间后再生成排班')
+        return redirect(url_for('admin'))
+    
+    # 清空旧排班
+    Schedule.query.delete()
+    dates = [datetime.now().date() + timedelta(days=i) for i in range(30)]
+    slots = range(1, app.config['TIME_SLOTS']+1)
+    group_users = {}
+    
+    # 按分组分组员工
+    for user in User.query.filter_by(role='staff', status=True).all():
+        group = user.group
+        if group not in group_users:
+            group_users[group] = []
+        group_users[group].append(user)
+    
+    # 排班逻辑
+    for date in dates:
+        for slot in slots:
+            for group, users in group_users.items():
+                # 筛选：空闲+单日排班未超上限+次数最少
+                candidates = []
+                for user in users:
+                    # 检查空闲
+                    free = FreeTime.query.filter_by(user_id=user.id, date=date, slot=slot, is_free=True).first()
+                    if not free:
+                        continue
+                    # 检查单日时长
+                    daily_schedule = Schedule.query.filter_by(user_id=user.id, date=date).count()
+                    if daily_schedule >= app.config['MAX_WORK_SLOTS']:
+                        continue
+                    # 获取排班次数
+                    stat = ScheduleStats.query.filter_by(user_id=user.id).first()
+                    candidates.append((user, stat.total_count if stat else 0))
+                
+                if not candidates:
+                    continue
+                # 选次数最少的员工（平均分配）
+                candidates.sort(key=lambda x: x[1])
+                target_user = candidates[0][0]
+                
+                # 创建排班
+                schedule = Schedule(user_id=target_user.id, date=date, slot=slot)
+                db.session.add(schedule)
+                
+                # 更新统计
+                stat = ScheduleStats.query.filter_by(user_id=target_user.id).first()
+                stat.total_count += 1
+                stat.group = group
+    
+    db.session.commit()
+    flash('排班表生成成功！')
+    return redirect(url_for('admin'))
+
+# 初始化数据库（首次运行）
+with app.app_context():
+    db.create_all()
+    # 创建默认管理员
+    if not User.query.filter_by(username='admin').first():
+        admin = User(
+            username='admin',
+            password=generate_password_hash('admin123'),
+            name='超级管理员',
+            role='admin'
+        )
+        db.session.add(admin)
+        db.session.commit()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
