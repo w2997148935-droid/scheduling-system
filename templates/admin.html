@@ -63,7 +63,7 @@
                         {% for d in dates %}
                         <td>
                             {% for sch in schedules if sch.date==d and sch.slot==slot %}
-                                {{ User.query.get(sch.user_id).name }}<br>
+                                {{ user_dict[sch.user_id] }}<br>
                             {% endfor %}
                         </td>
                         {% endfor %}
@@ -100,7 +100,7 @@
         <div class="card-body">
             {% for r in requests %}
                 <div class="border p-2 mb-2">
-                    {{ User.query.get(r.applicant_id).name }} | {{ r.type }} | {{ r.status }}
+                    {{ user_dict[r.applicant_id] }} | {{ r.type }} | {{ r.status }}
                 </div>
             {% else %}
                 <p>暂无审批</p>
