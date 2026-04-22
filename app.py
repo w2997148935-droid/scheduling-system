@@ -75,7 +75,6 @@ class ShiftRequest(db.Model):
     schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=True)
     target_user_id = db.Column(db.Integer, nullable=True)
     type = db.Column(db.String(20), nullable=False)
-    reason = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
@@ -123,7 +122,7 @@ def logout():
 def staff():
     # 获取日期列表
     from datetime import datetime, timedelta
-    dates = [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(14)]
+    dates = [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(5)]
     # 查询用户自己的已排班次（用于请假/换班选择）
     my_schedules = Schedule.query.filter_by(user_id=current_user.id).all()
     # 查询申请记录
@@ -151,44 +150,44 @@ def submit_free():
 def submit_request():
     try:
         req_type = request.form.get('type')
-        reason = request.form.get('reason', '')
 
-        # ============= 【选班：无需审批，直接创建排班】 =============
+        # ========== 选班：直接创建排班，不碰申请表 ==========
         if req_type == "选班":
             import json
-            selected_data = json.loads(request.form.get('selected_data', '[]'))
-            for item in selected_data:
-                # 直接创建排班，立即生效
-                new_schedule = Schedule(
+            selected = json.loads(request.form.get('selected_data', '[]'))
+            for item in selected:
+                sch = Schedule(
                     user_id=current_user.id,
                     date=item['date'],
                     slot=int(item['slot']),
                     status="已生效"
                 )
-                db.session.add(new_schedule)
-            flash(f'选班提交成功！共生效 {len(selected_data)} 个班次', 'success')
+                db.session.add(sch)
+            flash(f"选班成功！{len(selected)}个班次已生效")
 
-        # ============= 【请假/换班：需要审批，关联已有班次】 =============
+        # ========== 请假/换班：用真实排班，必过约束 ==========
         elif req_type in ["请假", "换班"]:
-            schedule_id = int(request.form.get('schedule_id'))
-            # 创建审批申请
-            new_req = ShiftRequest(
+            sch_id = int(request.form.get('schedule_id'))
+            reason = request.form.get('reason', '')
+            # 把理由拼到类型里，不新增字段
+            full_type = f"{req_type}：{reason}" if reason else req_type
+            
+            req = ShiftRequest(
                 applicant_id=current_user.id,
-                schedule_id=schedule_id,
-                type=req_type,
-                reason=reason,
+                schedule_id=sch_id,
+                type=full_type,
                 status="待审批"
             )
-            db.session.add(new_req)
-            flash('申请提交成功！等待管理员审批', 'info')
+            db.session.add(req)
+            flash("申请已提交，等待管理员审批")
 
         else:
-            flash('申请类型错误！')
+            flash("类型错误")
         
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        flash(f'提交失败：{str(e)}')
+        flash(f"操作失败：{str(e)}")
     return redirect(url_for('staff'))
 
 # -------------------------- 管理员端 --------------------------
