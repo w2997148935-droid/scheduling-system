@@ -166,46 +166,26 @@ def submit_request():
                 db.session.add(intent)
             flash(f"✅ 选班意向提交成功！等待管理员生成排班")
         
-        # 请假/换班：原有审批逻辑
+        # ========== 请假/换班：用真实排班，必过约束 ==========
         elif req_type in ["请假", "换班"]:
             sch_id = int(request.form.get('schedule_id'))
             reason = request.form.get('reason', '')
+            # 把理由拼到类型里，不新增字段
+            full_type = f"{req_type}：{reason}" if reason else req_type
+            
             req = ShiftRequest(
                 applicant_id=current_user.id,
                 schedule_id=sch_id,
-                type=f"{req_type}：{reason}",
+                type=full_type,
                 status="待审批"
             )
             db.session.add(req)
-            flash("✅ 申请已提交，等待管理员审批")
+            flash("申请已提交，等待管理员审批")
+
         else:
-            flash("❌ 类型错误")
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        flash(f"❌ 失败：{str(e)}")
-    return redirect(url_for('staff'))
-
-    # ========== 请假/换班：用真实排班，必过约束 ==========
-    elif req_type in ["请假", "换班"]:
-        sch_id = int(request.form.get('schedule_id'))
-        reason = request.form.get('reason', '')
-        # 把理由拼到类型里，不新增字段
-        full_type = f"{req_type}：{reason}" if reason else req_type
+            flash("类型错误")
         
-        req = ShiftRequest(
-            applicant_id=current_user.id,
-            schedule_id=sch_id,
-            type=full_type,
-            status="待审批"
-        )
-        db.session.add(req)
-        flash("申请已提交，等待管理员审批")
-
-    else:
-        flash("类型错误")
-    
-    db.session.commit()
+        db.session.commit()
     except Exception as e:
         db.session.rollback()
         flash(f"操作失败：{str(e)}")
