@@ -78,6 +78,13 @@ class ShiftRequest(db.Model):
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
+class SelectIntent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    date = db.Column(db.String(20), nullable=False)
+    slot = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
 # -------------------------- 登录管理 --------------------------
 @login_manager.user_loader
 def load_user(user_id):
@@ -120,15 +127,11 @@ def logout():
 @app.route('/staff')
 @login_required
 def staff():
-    # 获取日期列表
-    from datetime import datetime, timedelta
-    dates = [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(5)]
-    # 查询用户自己的已排班次（用于请假/换班选择）
+    dates = [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(14)]
     my_schedules = Schedule.query.filter_by(user_id=current_user.id).all()
-    # 查询申请记录
     requests = ShiftRequest.query.filter_by(applicant_id=current_user.id).all()
     return render_template('staff.html', dates=dates, my_schedules=my_schedules, requests=requests)
-
+    
 @app.route('/submit_free', methods=['POST'])
 @login_required
 def submit_free():
@@ -145,25 +148,43 @@ def submit_free():
     db.session.commit()
     return jsonify({'success': True})
 
+# ==================== 提交申请（选班=存意向，请假换班=审批）====================
 @app.route('/submit_request', methods=['POST'])
 @login_required
 def submit_request():
     try:
         req_type = request.form.get('type')
-
-        # ========== 选班：直接创建排班，不碰申请表 ==========
+        # 选班：提交意向
         if req_type == "选班":
-            import json
             selected = json.loads(request.form.get('selected_data', '[]'))
             for item in selected:
-                sch = Schedule(
+                intent = SelectIntent(
                     user_id=current_user.id,
                     date=item['date'],
-                    slot=int(item['slot']),
-                    status="已生效"
+                    slot=int(item['slot'])
                 )
-                db.session.add(sch)
-            flash(f"选班成功！{len(selected)}个班次已生效")
+                db.session.add(intent)
+            flash(f"✅ 选班意向提交成功！等待管理员生成排班")
+        
+        # 请假/换班：原有审批逻辑
+        elif req_type in ["请假", "换班"]:
+            sch_id = int(request.form.get('schedule_id'))
+            reason = request.form.get('reason', '')
+            req = ShiftRequest(
+                applicant_id=current_user.id,
+                schedule_id=sch_id,
+                type=f"{req_type}：{reason}",
+                status="待审批"
+            )
+            db.session.add(req)
+            flash("✅ 申请已提交，等待管理员审批")
+        else:
+            flash("❌ 类型错误")
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ 失败：{str(e)}")
+    return redirect(url_for('staff'))
 
         # ========== 请假/换班：用真实排班，必过约束 ==========
         elif req_type in ["请假", "换班"]:
@@ -195,13 +216,17 @@ def submit_request():
 @login_required
 def admin():
     if current_user.role != 'admin':
-        flash('无管理员权限')
         return redirect(url_for('staff'))
+    
+    # 获取所有数据
     users = User.query.all()
-    stats = ScheduleStats.query.all()
     requests = ShiftRequest.query.filter_by(status='待审批').all()
-    schedules = Schedule.query.all()
-    return render_template('admin.html', user=current_user, users=users, stats=stats, requests=requests, schedules=schedules)
+    final_schedules = Schedule.query.filter_by(status='已确认').all()
+    stats = ScheduleStats.query.all()
+    dates = list({d.date for d in final_schedules})
+    dates.sort()
+    return render_template('admin.html', users=users, requests=requests,
+                         schedules=final_schedules, stats=stats, dates=dates)
 
 @app.route('/import_users', methods=['POST'])
 @login_required
@@ -301,39 +326,52 @@ def approve_request(req_id, status):
     db.session.commit()
     return redirect(url_for('admin'))
 
-@app.route('/generate_schedule')
+# ==================== 【核心】管理员生成最终排班表 ====================
+@app.route('/generate_schedule', methods=['POST'])
 @login_required
 def generate_schedule():
-    if FreeTime.query.count() == 0:
-        flash('请等待员工提交空闲时间后再生成排班')
-        return redirect(url_for('admin'))
-    Schedule.query.delete()
-    dates = [datetime.now().date() + timedelta(days=i) for i in range(30)]
-    slots = range(1, app.config['TIME_SLOTS']+1)
-    group_users = {}
-    for user in User.query.filter_by(role='staff', status=True).all():
-        group = user.group
-        if group not in group_users:
-            group_users[group] = []
-        group_users[group].append(user)
-    for date in dates:
-        for slot in slots:
-            for group, users in group_users.items():
-                candidates = []
-                for user in users:
-                    free = FreeTime.query.filter_by(user_id=user.id, date=date, slot=slot, is_free=True).first()
-                    if not free: continue
-                    if Schedule.query.filter_by(user_id=user.id, date=date).count() >= app.config['MAX_WORK_SLOTS']: continue
-                    stat = ScheduleStats.query.filter_by(user_id=user.id).first()
-                    candidates.append((user, stat.total_count if stat else 0))
-                if candidates:
-                    candidates.sort(key=lambda x: x[1])
-                    target = candidates[0][0]
-                    db.session.add(Schedule(user_id=target.id, date=date, slot=slot))
-                    stat = ScheduleStats.query.filter_by(user_id=target.id).first()
-                    stat.total_count += 1
-    db.session.commit()
-    flash('排班表生成成功！')
+    try:
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+        need_num = int(request.form.get('need_num', 1))  # 每班需求人数
+
+        # 清空旧的已确认排班
+        Schedule.query.filter_by(status='已确认').delete()
+        
+        # 生成日期列表
+        s_date = datetime.strptime(start_date, '%Y-%m-%d')
+        e_date = datetime.strptime(end_date, '%Y-%m-%d')
+        date_list = []
+        while s_date <= e_date:
+            date_list.append(s_date.strftime('%Y-%m-%d'))
+            s_date += timedelta(days=1)
+        
+        # 按时段+日期统计选班意向，生成排班
+        for date in date_list:
+            for slot in range(1,7):
+                # 获取该时段所有选班员工
+                intents = SelectIntent.query.filter_by(date=date, slot=slot).all()
+                user_ids = [i.user_id for i in intents]
+                # 去重 + 限制人数（需求人数/最大人数）
+                unique_ids = list(set(user_ids))[:need_num]
+                
+                for uid in unique_ids:
+                    sch = Schedule(
+                        user_id=uid, date=date, slot=slot, status='已确认'
+                    )
+                    db.session.add(sch)
+        
+        # 更新统计
+        ScheduleStats.query.delete()
+        for uid in list({u.user_id for u in Schedule.query.filter_by(status='已确认').all()}):
+            cnt = Schedule.query.filter_by(user_id=uid, status='已确认').count()
+            db.session.add(ScheduleStats(user_id=uid, count=cnt))
+        
+        db.session.commit()
+        flash("✅ 最终排班表生成成功！")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"❌ 生成失败：{str(e)}")
     return redirect(url_for('admin'))
 
 # 批量删除员工
