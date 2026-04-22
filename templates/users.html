@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>全体人员</h3>
+{% for u in users %}
+<div class="border p-2 mb-2">
+    {{u.name}} | {{u.role}}
+    {% if u.role != 'admin' %}
+    <a href="/set_admin/{{u.id}}" class="btn btn-sm btn-warning">设为管理员</a>
+    {% endif %}
+</div>
+{% endfor %}
+<a href="/admin" class="btn btn-sm btn-primary">返回</a>
+{% endblock %}
