@@ -85,6 +85,12 @@ class SelectIntent(db.Model):
     slot = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
+class ScheduleConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    start_date = db.Column(db.String(20), nullable=False)
+    end_date = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(10), default='active')  # active=生效
+
 # -------------------------- 登录管理 --------------------------
 @login_manager.user_loader
 def load_user(user_id):
@@ -127,10 +133,20 @@ def logout():
 @app.route('/staff')
 @login_required
 def staff():
-    dates = [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(14)]
+    # 获取生效的选班时段
+    config = ScheduleConfig.query.filter_by(status='active').first()
+    dates = []
+    if config:
+        s = datetime.strptime(config.start_date, '%Y-%m-%d')
+        e = datetime.strptime(config.end_date, '%Y-%m-%d')
+        while s <= e:
+            dates.append(s.strftime('%Y-%m-%d'))
+            s += timedelta(days=1)
+    
     my_schedules = Schedule.query.filter_by(user_id=current_user.id).all()
     requests = ShiftRequest.query.filter_by(applicant_id=current_user.id).all()
     return render_template('staff.html', dates=dates, my_schedules=my_schedules, requests=requests)
+
     
 @app.route('/submit_free', methods=['POST'])
 @login_required
@@ -191,6 +207,19 @@ def submit_request():
         flash(f"操作失败：{str(e)}")
     return redirect(url_for('staff'))
 
+# ==================== 新增：请假/换班审批接口 ====================
+@app.route('/approve/<int:req_id>/<action>')
+@login_required
+def approve_request(req_id, action):
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    req = ShiftRequest.query.get_or_404(req_id)
+    req.status = '已同意' if action == 'ok' else '已拒绝'
+    db.session.commit()
+    flash('审批完成！')
+    return redirect(url_for('admin'))
+
+
 # -------------------------- 管理员端 --------------------------
 @app.route('/admin')
 @login_required
@@ -198,16 +227,16 @@ def admin():
     if current_user.role != 'admin':
         return redirect(url_for('staff'))
     
-    # 获取所有数据
     users = User.query.all()
-    requests = ShiftRequest.query.filter_by(status='待审批').all()
-    final_schedules = Schedule.query.filter_by(status='已确认').all()
-    stats = ScheduleStats.query.all()
-    dates = list({d.date for d in final_schedules})
-    dates.sort()
     user_dict = {u.id: u.name for u in users}
+    requests = ShiftRequest.query.filter_by(status='待审批').all()
+    schedules = Schedule.query.filter_by(status='已确认').all()
+    stats = ScheduleStats.query.all()
+    config = ScheduleConfig.query.filter_by(status='active').first()
+    dates = sorted({d.date for d in schedules})
     return render_template('admin.html', users=users, requests=requests,
-                         schedules=final_schedules, stats=stats, dates=dates, user_dict=user_dict)
+                         schedules=schedules, stats=stats, dates=dates,
+                         config=config, user_dict=user_dict)
 
 @app.route('/import_users', methods=['POST'])
 @login_required
@@ -307,6 +336,18 @@ def approve_request(req_id, status):
     db.session.commit()
     return redirect(url_for('admin'))
 
+# ==================== 新增：设置管理员接口 ====================
+@app.route('/set_admin/<int:uid>')
+@login_required
+def set_admin(uid):
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    user = User.query.get_or_404(uid)
+    user.role = 'admin'
+    db.session.commit()
+    flash(f'已设置 {user.name} 为管理员！')
+    return redirect(url_for('user_list'))
+
 # ==================== 【核心】管理员生成最终排班表 ====================
 @app.route('/generate_schedule', methods=['POST'])
 @login_required
@@ -355,7 +396,41 @@ def generate_schedule():
         flash(f"❌ 生成失败：{str(e)}")
     return redirect(url_for('admin'))
 
-# 批量删除员工
+# ==================== 新增：独立页面 - 全体人员列表 ====================
+@app.route('/users')
+@login_required
+def user_list():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    users = User.query.all()
+    return render_template('users.html', users=users)
+
+# ==================== 新增：独立页面 - 值班统计 ====================
+@app.route('/stats')
+@login_required
+def stats_page():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    stats = ScheduleStats.query.all()
+    user_dict = {u.id: u.name for u in User.query.all()}
+    return render_template('stats.html', stats=stats, user_dict=user_dict)
+
+# ==================== 新增：管理员发布选班时段 ====================
+@app.route('/save_config', methods=['POST'])
+@login_required
+def save_config():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    start = request.form.get('start_date')
+    end = request.form.get('end_date')
+    # 关闭旧配置，生效新配置
+    ScheduleConfig.query.update({ScheduleConfig.status: 'inactive'})
+    db.session.add(ScheduleConfig(start_date=start, end_date=end))
+    db.session.commit()
+    flash('选班时间段发布成功！员工页面已同步')
+    return redirect(url_for('admin'))
+
+
 # 批量删除员工
 @app.route('/batch_delete_users', methods=['POST'])
 @login_required
