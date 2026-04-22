@@ -74,25 +74,11 @@
         </div>
     </div>
 
-    <!-- 3. 下拉菜单：全体人员 -->
-    <div class="dropdown mt-3">
-        <button class="btn btn-secondary dropdown-toggle">全体人员名单</button>
-        <div class="dropdown-menu">
-            {% for u in users %}
-                <div>{{ u.id }}. {{ u.name }} ({{ u.username }})</div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- 4. 下拉菜单：值班统计 -->
-    <div class="dropdown mt-2">
-        <button class="btn btn-info dropdown-toggle">值班次数统计</button>
-        <div class="dropdown-menu">
-            {% for s in stats %}
-                <div>{{ user_dict[s.user_id] }}：{{ s.count }} 次</div>
-            {% endfor %}
-        </div>
-    </div>
+    <!-- 2. 下拉菜单改为跳转页面 -->
+    <div class="mt-3">
+    <a href="/users" class="btn btn-secondary me-2">全体人员名单</a>
+    <a href="/stats" class="btn btn-info">值班次数统计</a>
+</div>
 
     <!-- 5. 待审批申请 -->
     <div class="card mt-3">
@@ -101,11 +87,34 @@
             {% for r in requests %}
                 <div class="border p-2 mb-2">
                     {{ user_dict[r.applicant_id] }} | {{ r.type }} | {{ r.status }}
+                    <a href="/approve/{{r.id}}/ok" class="btn btn-sm btn-success">同意</a>
+                    <a href="/approve/{{r.id}}/no" class="btn btn-sm btn-danger">拒绝</a>
                 </div>
             {% else %}
                 <p>暂无审批</p>
             {% endfor %}
         </div>
     </div>
+    
+    <!-- 1. 新增：发布选班时间段 -->
+<div class="card mt-3">
+    <div class="card-header bg-info text-white">设置选班时间段（发布后员工同步）</div>
+    <div class="card-body">
+        <form method="POST" action="/save_config" class="row g-3">
+            <div class="col-md-4">
+                <input type="date" name="start_date" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <input type="date" name="end_date" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-primary w-100">发布时间段</button>
+            </div>
+        </form>
+        {% if config %}
+        <span class="text-success">当前生效：{{config.start_date}} ~ {{config.end_date}}</span>
+        {% endif %}
+    </div>
+</div>
 </body>
 </html>
