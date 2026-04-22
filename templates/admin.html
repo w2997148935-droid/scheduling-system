@@ -89,7 +89,7 @@
         <button class="btn btn-info dropdown-toggle">值班次数统计</button>
         <div class="dropdown-menu">
             {% for s in stats %}
-                <div>{{ User.query.get(s.user_id).name }}：{{ s.count }} 次</div>
+                <div>{{ user_dict[s.user_id] }}：{{ s.count }} 次</div>
             {% endfor %}
         </div>
     </div>
