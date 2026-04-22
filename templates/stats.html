@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>值班统计</h3>
+{% for s in stats %}
+<div class="border p-2 mb-2">{{user_dict[s.user_id]}}：{{s.count}}次</div>
+{% endfor %}
+<a href="/admin" class="btn btn-sm btn-primary">返回</a>
+{% endblock %}
