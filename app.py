@@ -154,10 +154,10 @@ def submit_request():
             flash('请选择申请类型！')
             return redirect(url_for('staff'))
         
-        # ✅ 正确写法：schedule_id 传 None（现在数据库允许为空）
+        # 🔥 核心：强制使用虚拟排班ID=1，满足非空+外键双约束
         new_request = ShiftRequest(
             applicant_id=current_user.id,
-            schedule_id=None,  # 留空即可
+            schedule_id=1,  # 永远填1，虚拟排班，永不报错
             type=req_type,
             status='待审批'
         )
@@ -351,21 +351,21 @@ def batch_delete_users():
         flash('请选择要删除的员工')
     return redirect(url_for('admin'))
 
-# 初始化数据库
-# 初始化数据库 + 修复表结构（彻底解决约束报错）
+# 初始化数据库 + 自动创建虚拟排班（解决所有约束报错）
 with app.app_context():
     db.create_all()
-    # 🔥 执行原生SQL：修改 schedule_id 允许为空，删除外键严格约束
-    try:
-        # 1. 允许 schedule_id 为空
-        db.engine.execute('ALTER TABLE shift_request ALTER COLUMN schedule_id DROP NOT NULL;')
-        # 2. （可选）删除外键约束（如果需要完全自由）
-        # db.engine.execute('ALTER TABLE shift_request DROP CONSTRAINT IF EXISTS shift_request_schedule_id_fkey;')
-        db.session.commit()
-    except:
-        db.session.rollback()
-    
-    # 超级管理员
+
+    # 🔥 自动创建一个虚拟排班（ID=1，专门用于选班申请）
+    if not Schedule.query.get(1):
+        dummy_schedule = Schedule(
+            user_id=1,  # 超级管理员ID
+            date="2025-01-01",
+            slot=1,
+            status="虚拟班次"
+        )
+        db.session.add(dummy_schedule)
+
+    # 创建超级管理员
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(
             username='admin',
@@ -374,7 +374,7 @@ with app.app_context():
             role='admin',
             status=True
         ))
-    # 测试员工
+    # 创建测试员工
     if not User.query.filter_by(username='test01').first():
         test_user = User(
             username='test01',
