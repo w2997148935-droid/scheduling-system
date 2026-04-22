@@ -167,7 +167,7 @@ def submit_request():
             flash(f"✅ 选班意向提交成功！等待管理员生成排班")
         
         # 请假/换班：原有审批逻辑
-        elif req_type in ["请假","换班"]:
+        elif req_type in ["请假", "换班"]:
             sch_id = int(request.form.get('schedule_id'))
             reason = request.form.get('reason', '')
             req = ShiftRequest(
@@ -187,7 +187,7 @@ def submit_request():
     return redirect(url_for('staff'))
 
         # ========== 请假/换班：用真实排班，必过约束 ==========
-        elif req_type in ["请假","换班"]:
+        elif req_type in ["请假", "换班"]:
             sch_id = int(request.form.get('schedule_id'))
             reason = request.form.get('reason', '')
             # 把理由拼到类型里，不新增字段
