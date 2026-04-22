@@ -71,7 +71,7 @@
     <h5>✅ 换班/请假审批</h5>
     {% for req in requests %}
     <div class="border p-2 mb-2">
-        申请人：{{ req.applicant_id | user_name }} | 类型：{{ req.type }} | 状态：{{ req.status }}
+        申请人：{{ req.applicant_id | user_name }} | 类型：{{ req.type }} | 状态：{{ req.status }} | 理由：{{ req.reason or '无' }}
         <a href="/approve_request/{{ req.id }}/通过" class="btn btn-sm btn-success">通过</a>
         <a href="/approve_request/{{ req.id }}/拒绝" class="btn btn-sm btn-danger">拒绝</a>
     </div>
