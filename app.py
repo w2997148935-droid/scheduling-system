@@ -205,8 +205,9 @@ def admin():
     stats = ScheduleStats.query.all()
     dates = list({d.date for d in final_schedules})
     dates.sort()
+    user_dict = {u.id: u.name for u in users}
     return render_template('admin.html', users=users, requests=requests,
-                         schedules=final_schedules, stats=stats, dates=dates)
+                         schedules=final_schedules, stats=stats, dates=dates, user_dict=user_dict)
 
 @app.route('/import_users', methods=['POST'])
 @login_required
