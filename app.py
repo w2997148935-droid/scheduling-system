@@ -75,6 +75,7 @@ class ShiftRequest(db.Model):
     schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=True)
     target_user_id = db.Column(db.Integer, nullable=True)
     type = db.Column(db.String(20), nullable=False)
+    reason = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
@@ -120,14 +121,14 @@ def logout():
 @app.route('/staff')
 @login_required
 def staff():
-    if current_user.role != 'staff':
-        return redirect(url_for('admin'))
-    dates = [datetime.now().date() + timedelta(days=i) for i in range(30)]
-    free_times = FreeTime.query.filter_by(user_id=current_user.id).all()
-    free_data = {(f.date, f.slot): f.is_free for f in free_times}
-    schedules = Schedule.query.filter_by(user_id=current_user.id).all()
+    # 获取日期列表
+    from datetime import datetime, timedelta
+    dates = [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(14)]
+    # 查询用户自己的已排班次（用于请假/换班选择）
+    my_schedules = Schedule.query.filter_by(user_id=current_user.id).all()
+    # 查询申请记录
     requests = ShiftRequest.query.filter_by(applicant_id=current_user.id).all()
-    return render_template('staff.html', user=current_user, dates=dates, slots=range(1, app.config['TIME_SLOTS']+1), free_data=free_data, schedules=schedules, requests=requests)
+    return render_template('staff.html', dates=dates, my_schedules=my_schedules, requests=requests)
 
 @app.route('/submit_free', methods=['POST'])
 @login_required
@@ -149,26 +150,45 @@ def submit_free():
 @login_required
 def submit_request():
     try:
-        req_type = request.form.get('type', '').strip()
-        if not req_type:
-            flash('请选择申请类型！')
-            return redirect(url_for('staff'))
+        req_type = request.form.get('type')
+        reason = request.form.get('reason', '')
+
+        # ============= 【选班：无需审批，直接创建排班】 =============
+        if req_type == "选班":
+            import json
+            selected_data = json.loads(request.form.get('selected_data', '[]'))
+            for item in selected_data:
+                # 直接创建排班，立即生效
+                new_schedule = Schedule(
+                    user_id=current_user.id,
+                    date=item['date'],
+                    slot=int(item['slot']),
+                    status="已生效"
+                )
+                db.session.add(new_schedule)
+            flash(f'选班提交成功！共生效 {len(selected_data)} 个班次', 'success')
+
+        # ============= 【请假/换班：需要审批，关联已有班次】 =============
+        elif req_type in ["请假", "换班"]:
+            schedule_id = int(request.form.get('schedule_id'))
+            # 创建审批申请
+            new_req = ShiftRequest(
+                applicant_id=current_user.id,
+                schedule_id=schedule_id,
+                type=req_type,
+                reason=reason,
+                status="待审批"
+            )
+            db.session.add(new_req)
+            flash('申请提交成功！等待管理员审批', 'info')
+
+        else:
+            flash('申请类型错误！')
         
-        # 🔥 核心：强制使用虚拟排班ID=1，满足非空+外键双约束
-        new_request = ShiftRequest(
-            applicant_id=current_user.id,
-            schedule_id=1,  # 永远填1，虚拟排班，永不报错
-            type=req_type,
-            status='待审批'
-        )
-        db.session.add(new_request)
         db.session.commit()
-        
-        flash('选班申请提交成功！等待管理员审批~')
     except Exception as e:
         db.session.rollback()
         flash(f'提交失败：{str(e)}')
-    
     return redirect(url_for('staff'))
 
 # -------------------------- 管理员端 --------------------------
@@ -354,6 +374,7 @@ def batch_delete_users():
 # 初始化数据库 + 自动创建虚拟排班（解决所有约束报错）
 with app.app_context():
     db.create_all()
+    db.session.commit()
 
     # 🔥 自动创建一个虚拟排班（ID=1，专门用于选班申请）
     if not Schedule.query.get(1):
