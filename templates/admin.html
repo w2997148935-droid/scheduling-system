@@ -1,99 +1,111 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>管理中心</title>
+    <title>管理员后台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1.min.js"></script>
+    <style>
+        .schedule-table {width:100%;border-collapse:collapse;table-layout:fixed;}
+        .schedule-table th,.schedule-table td {border:1px solid #ddd;padding:6px;text-align:center;}
+        .schedule-table th {background:#0d6efd;color:white;}
+        .time-col {background:#f8f9fa;font-weight:bold;}
+        .dropdown-menu {width:300px;padding:10px;}
+    </style>
 </head>
 <body class="container mt-3">
     <div class="d-flex justify-content-between">
-        <h3>管理员中心</h3>
-        <a href="/logout" class="btn btn-danger">退出登录</a>
-    </div>
-    <hr>
-
-    <!-- 1. 员工管理 + Excel导入 -->
-    <h5>👥 员工管理</h5>
-    <div class="d-flex gap-2 mb-3">
-        <form action="/import_users" method="post" enctype="multipart/form-data" class="d-flex gap-2">
-            <input type="file" name="file" accept=".xlsx" required>
-            <button class="btn btn-success">导入Excel员工</button>
-        </form>
-        <a href="/generate_schedule" class="btn btn-primary">生成排班表</a>
+        <h4>管理员后台</h4>
+        <a href="/logout" class="btn btn-danger btn-sm">退出</a>
     </div>
 
-    <!-- 批量删除按钮 -->
-    <form action="/batch_delete_users" method="post" id="batchForm">
-        <button type="submit" class="btn btn-danger mb-3" onclick="return confirm('确定删除选中员工？所有数据将被清空！')">
-            批量删除选中员工
-        </button>
+    {% with messages = get_flashed_messages() %}
+        {% for msg in messages %}<div class="alert alert-info mt-2">{{ msg }}</div>{% endfor %}
+    {% endwith %}
 
-        <!-- 员工列表（带删除功能） -->
-        <div class="table-responsive">
-            <table class="table table-bordered table-sm">
-                <thead class="table-light">
+    <!-- 1. 排班生成控制：日期范围+需求人数 -->
+    <div class="card mt-3">
+        <div class="card-header bg-primary text-white">生成最终排班表</div>
+        <div class="card-body">
+            <form method="POST" action="/generate_schedule" class="row g-3">
+                <div class="col-md-3">
+                    <label>开始日期</label>
+                    <input type="date" name="start_date" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label>结束日期</label>
+                    <input type="date" name="end_date" class="form-control" required>
+                </div>
+                <div class="col-md-3">
+                    <label>每班需求人数</label>
+                    <input type="number" name="need_num" class="form-control" value="1" min="1" required>
+                </div>
+                <div class="col-md-3 align-self-end">
+                    <button class="btn btn-success w-100">生成最终排班</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. 最终排班矩阵日历（核心！） -->
+    <div class="card mt-3">
+        <div class="card-header bg-success text-white">最终排班表（矩阵日历）</div>
+        <div class="card-body overflow-auto">
+            <table class="schedule-table">
+                <thead>
                     <tr>
-                        <th><input type="checkbox" id="selectAll"> 全选</th>
-                        <th>ID</th>
-                        <th>姓名</th>
-                        <th>账号</th>
-                        <th>组别</th>
-                        <th>角色</th>
-                        <th>操作</th>
+                        <th>时段</th>
+                        {% for d in dates %}<th>{{ d }}</th>{% endfor %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% for u in users %}
+                    {% for slot in range(1,7) %}
                     <tr>
-                        <td><input type="checkbox" name="user_ids" value="{{ u.id }}"></td>
-                        <td>{{ u.id }}</td>
-                        <td>{{ u.name }}</td>
-                        <td>{{ u.username }}</td>
-                        <td>{{ u.group }}</td>
-                        <td>{{ u.role }}</td>
+                        <td class="time-col">第{{ slot }}节</td>
+                        {% for d in dates %}
                         <td>
-                            <!-- 单个删除按钮 -->
-                            <form method="post" action="/manage_user" style="display:inline;" onsubmit="return confirm('确定删除该员工？')">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="{{ u.id }}">
-                                <button class="btn btn-sm btn-danger">删除</button>
-                            </form>
+                            {% for sch in schedules if sch.date==d and sch.slot==slot %}
+                                {{ User.query.get(sch.user_id).name }}<br>
+                            {% endfor %}
                         </td>
+                        {% endfor %}
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    </form>
-
-    <hr>
-    <!-- 2. 审批中心 -->
-    <h5>✅ 换班/请假审批</h5>
-    {% for req in requests %}
-    <div class="border p-2 mb-2">
-        申请人：{{ req.applicant_id | user_name }} | 类型：{{ req.type }} | 状态：{{ req.status }} | 理由：{{ req.reason or '无' }}
-        <a href="/approve_request/{{ req.id }}/通过" class="btn btn-sm btn-success">通过</a>
-        <a href="/approve_request/{{ req.id }}/拒绝" class="btn btn-sm btn-danger">拒绝</a>
     </div>
-    {% else %}
-    <p>暂无待审批申请</p>
-    {% endfor %}
 
-    <hr>
-    <!-- 3. 排班统计 -->
-    <h5>📊 值班次数统计</h5>
-    <table class="table table-sm">
-        <tr><th>姓名</th><th>组别</th><th>总值班次数</th></tr>
-        {% for s in stats %}
-        <tr><td>{{ s.user_id | user_name }}</td><td>{{ s.group }}</td><td>{{ s.total_count }}</td></tr>
-        {% endfor %}
-    </table>
+    <!-- 3. 下拉菜单：全体人员 -->
+    <div class="dropdown mt-3">
+        <button class="btn btn-secondary dropdown-toggle">全体人员名单</button>
+        <div class="dropdown-menu">
+            {% for u in users %}
+                <div>{{ u.id }}. {{ u.name }} ({{ u.username }})</div>
+            {% endfor %}
+        </div>
+    </div>
 
-    <!-- 全选JS -->
-    <script>
-        $('#selectAll').click(function(){
-            $('input[name="user_ids"]').prop('checked', $(this).prop('checked'));
-        });
-    </script>
+    <!-- 4. 下拉菜单：值班统计 -->
+    <div class="dropdown mt-2">
+        <button class="btn btn-info dropdown-toggle">值班次数统计</button>
+        <div class="dropdown-menu">
+            {% for s in stats %}
+                <div>{{ User.query.get(s.user_id).name }}：{{ s.count }} 次</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 5. 待审批申请 -->
+    <div class="card mt-3">
+        <div class="card-header">待审批请假/换班</div>
+        <div class="card-body">
+            {% for r in requests %}
+                <div class="border p-2 mb-2">
+                    {{ User.query.get(r.applicant_id).name }} | {{ r.type }} | {{ r.status }}
+                </div>
+            {% else %}
+                <p>暂无审批</p>
+            {% endfor %}
+        </div>
+    </div>
 </body>
 </html>
