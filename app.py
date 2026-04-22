@@ -322,19 +322,6 @@ def manage_user():
     db.session.commit()
     return redirect(url_for('admin'))
 
-@app.route('/approve_request/<int:req_id>/<status>')
-@login_required
-def approve_request(req_id, status):
-    req = ShiftRequest.query.get(req_id)
-    req.status = status
-    req.approve_user_id = current_user.id
-    if status == '通过':
-        schedule = Schedule.query.get(req.schedule_id)
-        schedule.status = req.type
-        if req.type == '换班' and req.target_user_id:
-            schedule.user_id = req.target_user_id
-    db.session.commit()
-    return redirect(url_for('admin'))
 
 # ==================== 新增：设置管理员接口 ====================
 @app.route('/set_admin/<int:uid>')
