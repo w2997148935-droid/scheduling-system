@@ -7,7 +7,21 @@
 <body class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h3>全体人员名单</h3>
-        <a href="/admin" class="btn btn-primary btn-sm">返回管理员后台</a>
+        <div>
+            <a href="/admin" class="btn btn-primary btn-sm">返回后台</a>
+        </div>
+    </div>
+
+    <!-- Excel导入功能 -->
+    <div class="card mb-3">
+        <div class="card-header">Excel批量导入员工</div>
+        <div class="card-body">
+            <form method="POST" action="/import_users" enctype="multipart/form-data">
+                <input type="file" name="file" accept=".xlsx" class="form-control mb-2" required>
+                <button class="btn btn-success btn-sm">导入员工</button>
+                <small class="text-danger">表格必须包含：账号、姓名 列</small>
+            </form>
+        </div>
     </div>
 
     {% for u in users %}
@@ -15,9 +29,12 @@
         <div>
             姓名：{{ u.name }} &nbsp;&nbsp; 账号：{{ u.username }} &nbsp;&nbsp; 角色：{{ u.role }}
         </div>
-        {% if u.role != 'admin' %}
-        <a href="/set_admin/{{ u.id }}" class="btn btn-warning btn-sm">设为管理员</a>
-        {% endif %}
+        <div>
+            {% if u.role != 'admin' %}
+            <a href="/set_admin/{{ u.id }}" class="btn btn-warning btn-sm">设为管理员</a>
+            <a href="/delete_user/{{ u.id }}" class="btn btn-danger btn-sm" onclick="return confirm('确定删除？')">删除</a>
+            {% endif %}
+        </div>
     </div>
     {% endfor %}
 </body>
