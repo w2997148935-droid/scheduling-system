@@ -389,8 +389,14 @@ def user_list():
     if current_user.role != 'admin':
         return redirect(url_for('staff'))
     users = User.query.all()
-    return render_template('users.html', users=users)
 
+    # 计算值班次数
+    schedules = Schedule.query.filter_by(status='已确认').all()
+    count_data = {}
+    for s in schedules:
+        count_data[s.user_id] = count_data.get(s.user_id, 0) + 1
+
+    return render_template('users.html', users=users, count_data=count_data)
 # ==================== 新增：独立页面 - 值班统计 ====================
 @app.route('/stats')
 @login_required
