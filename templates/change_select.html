@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>选择换班人员</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <h4>🔁 换班选择</h4>
+    <p>班次：{{ now_sch.date }} 第{{ now_sch.slot }}时段</p>
+    <div class="alert alert-secondary">
+        仅显示：填写过该时段意向 且 未被安排排班的同事
+    </div>
+    <a href="/my_schedule" class="btn btn-secondary btn-sm mb-3">返回我的班次</a>
+
+    {% if user_list %}
+        {% for u in user_list %}
+        <div class="border p-3 mb-2 d-flex justify-content-between align-items-center">
+            <div>
+                姓名：{{ u.name }} &nbsp;|&nbsp; 分组：{{ u.group }}
+            </div>
+            <a href="/staff_change_do/{{ now_sch.id }}/{{ u.id }}" 
+               class="btn btn-sm btn-success"
+               onclick="return confirm('确定与该员工换班？')">
+                确认换班
+            </a>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-danger">暂无符合条件的可换班人员</div>
+    {% endif %}
+</body>
+</html>
