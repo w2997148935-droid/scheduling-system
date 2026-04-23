@@ -74,16 +74,37 @@
     </div>
 
     <script>
-        let selected = [];
-        document.querySelectorAll('.schedule-cell').forEach(c => {
-            c.addEventListener('click', () => {
-                const key = c.dataset.date + '_' + c.dataset.slot;
-                c.classList.toggle('selected');
-                if(selected.includes(key)) selected = selected.filter(i=>i!==key);
-                else selected.push({date:c.dataset.date, slot:c.dataset.slot});
-                document.getElementById('selected_data').value = JSON.stringify(selected);
-            });
+    // 修复多选+表单提交，唯一修改的脚本
+    let selectedItems = [];
+    document.querySelectorAll('.schedule-cell').forEach(cell => {
+        cell.addEventListener('click', function() {
+            const date = this.dataset.date;
+            const slot = this.dataset.slot;
+            const key = `${date}_${slot}`;
+            
+            // 切换选中样式
+            this.classList.toggle('selected');
+            
+            // 更新选中数组
+            const index = selectedItems.findIndex(i => i.key === key);
+            if (index > -1) {
+                selectedItems.splice(index, 1);
+            } else {
+                selectedItems.push({ key, date, slot });
+            }
+            
+            // 赋值到表单隐藏域
+            document.getElementById('selected_data').value = JSON.stringify(selectedItems);
         });
-    </script>
+    });
+
+    // 提交校验
+    document.getElementById('selectForm').addEventListener('submit', function(e) {
+        if (selectedItems.length === 0) {
+            alert('请选择至少一个班次！');
+            e.preventDefault();
+        }
+    });
+</script>
 </body>
 </html>
