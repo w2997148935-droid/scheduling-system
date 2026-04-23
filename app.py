@@ -163,16 +163,20 @@ def submit_free():
 @app.route('/my_schedule')
 @login_required
 def my_schedule():
-    # 获取管理员当前生效选班时段
+    # 获取当前生效的选班配置
     active_config = ScheduleConfig.query.filter_by(status="active").first()
-    # 本人已确认排班
+    # 获取本人已确认的所有排班
     my_all_sch = Schedule.query.filter_by(user_id=current_user.id, status="已确认").all()
 
     filter_sch = []
     if active_config:
-        # 只保留当前生效时间段内班次，旧时段自动隐藏
+        # 统一转成字符串比较，彻底解决类型不匹配问题
+        cfg_start = str(active_config.start_date)
+        cfg_end = str(active_config.end_date)
+
         for s in my_all_sch:
-            if active_config.start_date <= s.date <= active_config.end_date:
+            sch_date_str = str(s.date)
+            if cfg_start <= sch_date_str <= cfg_end:
                 filter_sch.append(s)
     else:
         filter_sch = my_all_sch
