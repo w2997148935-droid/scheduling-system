@@ -362,12 +362,13 @@ def generate_schedule():
         for date in date_list:
             for slot in range(1,7):
                 intents = SelectIntent.query.filter_by(date=date, slot=slot).all()
-                # 在 intents = ... 下面加这行
-group = request.form.get('group', '').strip()
-if group:
-    user_ids = [i.user_id for i in intents if User.query.get(i.user_id).group == group]
-else:
-    user_ids = [i.user_id for i in intents]
+                
+                # 分组过滤（正确缩进、正确语法）
+                if group:
+                    user_ids = [i.user_id for i in intents if User.query.get(i.user_id).group == group]
+                else:
+                    user_ids = [i.user_id for i in intents]
+                
                 unique_ids = list(set(user_ids))[:need_num]
                 
                 for uid in unique_ids:
