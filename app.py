@@ -68,6 +68,7 @@ class ScheduleStats(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
     total_count = db.Column(db.Integer, default=0)
     group = db.Column(db.String(50))
+    count = db.Column(db.Integer, default=0)
 
 class ShiftRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
