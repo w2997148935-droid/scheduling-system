@@ -236,6 +236,10 @@ def admin():
     stats = ScheduleStats.query.all()
     config = ScheduleConfig.query.filter_by(status='active').first()
     dates = sorted({d.date for d in schedules})
+    user_count = {}
+    for sch in schedules:
+        uid = sch.user_id
+        user_count[uid] = user_count.get(uid, 0) + 1
     return render_template('admin.html', users=users, requests=requests,
                          schedules=schedules, stats=stats, dates=dates,
                          config=config, user_dict=user_dict)
