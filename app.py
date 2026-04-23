@@ -168,6 +168,7 @@ def submit_free():
 @app.route('/submit_request', methods=['POST'])
 @login_required
 def submit_request():
+    import json
     try:
         req_type = request.form.get('type')
         # 选班：提交意向
@@ -489,6 +490,44 @@ with app.app_context():
         db.session.add(ScheduleStats(user_id=test_user.id, group='测试组'))
     
     db.session.commit()
+
+# ==================== 恢复：Excel导入员工 ====================
+@app.route('/import_users', methods=['POST'])
+@login_required
+def import_users():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    import pandas as pd
+    file = request.files['file']
+    df = pd.read_excel(file)
+    for _, row in df.iterrows():
+        if not User.query.filter_by(username=str(row['账号'])).first():
+            user = User(
+                username=str(row['账号']),
+                password=generate_password_hash('123456'),
+                name=row['姓名'],
+                role='staff',
+                status=True
+            )
+            db.session.add(user)
+    db.session.commit()
+    flash('Excel员工导入成功！默认密码：123456')
+    return redirect(url_for('user_list'))
+
+# ==================== 恢复：删除员工 ====================
+@app.route('/delete_user/<int:uid>')
+@login_required
+def delete_user(uid):
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    user = User.query.get_or_404(uid)
+    if user.username == 'admin':
+        flash('无法删除超级管理员！')
+    else:
+        db.session.delete(user)
+        db.session.commit()
+        flash('员工删除成功！')
+    return redirect(url_for('user_list'))
     
 # 启动服务（Render端口兼容）
 if __name__ == '__main__':
