@@ -491,29 +491,6 @@ with app.app_context():
     
     db.session.commit()
 
-# ==================== 恢复：Excel导入员工 ====================
-@app.route('/import_users', methods=['POST'])
-@login_required
-def import_users():
-    if current_user.role != 'admin':
-        return redirect(url_for('staff'))
-    import pandas as pd
-    file = request.files['file']
-    df = pd.read_excel(file)
-    for _, row in df.iterrows():
-        if not User.query.filter_by(username=str(row['账号'])).first():
-            user = User(
-                username=str(row['账号']),
-                password=generate_password_hash('123456'),
-                name=row['姓名'],
-                role='staff',
-                status=True
-            )
-            db.session.add(user)
-    db.session.commit()
-    flash('Excel员工导入成功！默认密码：123456')
-    return redirect(url_for('user_list'))
-
 # ==================== 恢复：删除员工 ====================
 @app.route('/delete_user/<int:uid>')
 @login_required
