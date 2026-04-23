@@ -362,7 +362,12 @@ def generate_schedule():
         for date in date_list:
             for slot in range(1,7):
                 intents = SelectIntent.query.filter_by(date=date, slot=slot).all()
-                user_ids = [i.user_id for i in intents]
+                # 在 intents = ... 下面加这行
+group = request.form.get('group', '').strip()
+if group:
+    user_ids = [i.user_id for i in intents if User.query.get(i.user_id).group == group]
+else:
+    user_ids = [i.user_id for i in intents]
                 unique_ids = list(set(user_ids))[:need_num]
                 
                 for uid in unique_ids:
@@ -502,6 +507,70 @@ def delete_user(uid):
         db.session.delete(user)
         db.session.commit()
         flash('员工删除成功！')
+    return redirect(url_for('user_list'))
+
+# ==================== 取消管理员 ====================
+@app.route('/unset_admin/<int:uid>')
+@login_required
+def unset_admin(uid):
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    user = User.query.get_or_404(uid)
+    if user.username == 'admin':
+        flash('无法取消超级管理员！')
+    else:
+        user.role = 'staff'
+        db.session.commit()
+        flash(f'已取消 {user.name} 的管理员权限！')
+    return redirect(url_for('user_list'))
+
+# ==================== 检索人员 ====================
+@app.route('/search_users')
+@login_required
+def search_users():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    keyword = request.args.get('keyword', '')
+    users = User.query.filter(
+        db.or_(
+            User.name.contains(keyword),
+            User.username.contains(keyword),
+            User.group.contains(keyword)
+        )
+    ).all()
+    schedules = Schedule.query.filter_by(status='已确认').all()
+    count_data = {}
+    for s in schedules:
+        count_data[s.user_id] = count_data.get(s.user_id, 0) + 1
+    return render_template('users.html', users=users, count_data=count_data, keyword=keyword)
+
+# ==================== 检索统计 ====================
+@app.route('/search_stats')
+@login_required
+def search_stats():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    keyword = request.args.get('keyword', '')
+    users = User.query.filter(
+        db.or_(User.name.contains(keyword), User.group.contains(keyword))
+    ).all()
+    schedules = Schedule.query.filter_by(status='已确认').all()
+    count_data = {}
+    for s in schedules:
+        count_data[s.user_id] = count_data.get(s.user_id, 0) + 1
+    return render_template('stats.html', users=users, count_data=count_data, keyword=keyword)
+
+# ==================== 修改分组 ====================
+@app.route('/set_group/<int:uid>', methods=['POST'])
+@login_required
+def set_group(uid):
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    user = User.query.get_or_404(uid)
+    group = request.form.get('group', '默认组')
+    user.group = group
+    db.session.commit()
+    flash(f'已将 {user.name} 分组改为：{group}')
     return redirect(url_for('user_list'))
     
 # 启动服务（Render端口兼容）
