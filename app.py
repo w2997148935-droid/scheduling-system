@@ -346,6 +346,7 @@ def generate_schedule():
         start_date = request.form.get('start_date')
         end_date = request.form.get('end_date')
         need_num = int(request.form.get('need_num', 1))
+        group = request.form.get('group', '').strip()
 
         # 清空旧排班
         Schedule.query.filter_by(status='已确认').delete()
