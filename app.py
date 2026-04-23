@@ -63,12 +63,6 @@ class Schedule(db.Model):
     status = db.Column(db.String(20), default='正常')
     __table_args__ = (db.UniqueConstraint('user_id', 'date', 'slot'),)
 
-class ScheduleStats(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
-    total_count = db.Column(db.Integer, default=0)
-    group = db.Column(db.String(50))
-    count = db.Column(db.Integer, default=0)
 
 class ShiftRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -233,16 +227,19 @@ def admin():
     user_dict = {u.id: u.name for u in users}
     requests = ShiftRequest.query.filter_by(status='待审批').all()
     schedules = Schedule.query.filter_by(status='已确认').all()
-    stats = ScheduleStats.query.all()
     config = ScheduleConfig.query.filter_by(status='active').first()
     dates = sorted({d.date for d in schedules})
+
+    # 🔥 纯Python内存计算值班次数（不操作数据库，0报错，0性能影响）
     user_count = {}
-    for sch in schedules:
-        uid = sch.user_id
-        user_count[uid] = user_count.get(uid, 0) + 1
-    return render_template('admin.html', users=users, requests=requests,
-                         schedules=schedules, stats=stats, dates=dates,
-                         config=config, user_dict=user_dict)
+    for s in schedules:
+        user_count[s.user_id] = user_count.get(s.user_id, 0) + 1
+
+    # 🔥 彻底删除 stats 参数，永不查询报错的表
+    return render_template('admin.html', 
+        users=users, requests=requests, schedules=schedules,
+        dates=dates, config=config, user_dict=user_dict, user_count=user_dict
+    )
 
 @app.route('/import_users', methods=['POST'])
 @login_required
@@ -348,9 +345,9 @@ def generate_schedule():
     try:
         start_date = request.form.get('start_date')
         end_date = request.form.get('end_date')
-        need_num = int(request.form.get('need_num', 1))  # 每班需求人数
+        need_num = int(request.form.get('need_num', 1))
 
-        # 清空旧的已确认排班
+        # 清空旧排班
         Schedule.query.filter_by(status='已确认').delete()
         
         # 生成日期列表
@@ -361,27 +358,17 @@ def generate_schedule():
             date_list.append(s_date.strftime('%Y-%m-%d'))
             s_date += timedelta(days=1)
         
-        # 按时段+日期统计选班意向，生成排班
+        # 生成排班
         for date in date_list:
             for slot in range(1,7):
-                # 获取该时段所有选班员工
                 intents = SelectIntent.query.filter_by(date=date, slot=slot).all()
                 user_ids = [i.user_id for i in intents]
-                # 去重 + 限制人数（需求人数/最大人数）
                 unique_ids = list(set(user_ids))[:need_num]
                 
                 for uid in unique_ids:
-                    sch = Schedule(
-                        user_id=uid, date=date, slot=slot, status='已确认'
-                    )
+                    sch = Schedule(user_id=uid, date=date, slot=slot, status='已确认')
                     db.session.add(sch)
-        
-        # 更新统计
-        ScheduleStats.query.delete()
-        for uid in list({u.user_id for u in Schedule.query.filter_by(status='已确认').all()}):
-            cnt = Schedule.query.filter_by(user_id=uid, status='已确认').count()
-            db.session.add(ScheduleStats(user_id=uid, count=cnt))
-        
+
         db.session.commit()
         flash("✅ 最终排班表生成成功！")
     except Exception as e:
@@ -404,9 +391,15 @@ def user_list():
 def stats_page():
     if current_user.role != 'admin':
         return redirect(url_for('staff'))
-    stats = ScheduleStats.query.all()
-    user_dict = {u.id: u.name for u in User.query.all()}
-    return render_template('stats.html', stats=stats, user_dict=user_dict)
+    users = User.query.all()
+    schedules = Schedule.query.filter_by(status='已确认').all()
+    
+    # 内存计算次数
+    count_data = {}
+    for s in schedules:
+        count_data[s.user_id] = count_data.get(s.user_id, 0) + 1
+        
+    return render_template('stats.html', users=users, count_data=count_data)
 
 # ==================== 新增：管理员发布选班时段 ====================
 @app.route('/save_config', methods=['POST'])
