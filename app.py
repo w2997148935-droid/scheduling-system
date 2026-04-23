@@ -159,6 +159,97 @@ def submit_free():
     db.session.commit()
     return jsonify({'success': True})
 
+# ==================== 员工 - 我的班次（自动绑定最新生效时段，新排班自动同步）====================
+@app.route('/my_schedule')
+@login_required
+def my_schedule():
+    # 获取管理员当前生效选班时段
+    active_config = ScheduleConfig.query.filter_by(status="active").first()
+    # 本人已确认排班
+    my_all_sch = Schedule.query.filter_by(user_id=current_user.id, status="已确认").all()
+
+    filter_sch = []
+    if active_config:
+        # 只保留当前生效时间段内班次，旧时段自动隐藏
+        for s in my_all_sch:
+            if active_config.start_date <= s.date <= active_config.end_date:
+                filter_sch.append(s)
+    else:
+        filter_sch = my_all_sch
+
+    return render_template("my_schedule.html", schedules=filter_sch)
+
+# ==================== 请假申请（走审批流，不是直接改状态）====================
+@app.route('/staff_leave_apply/<int:sch_id>', methods=["POST"])
+@login_required
+def staff_leave_apply(sch_id):
+    sch = Schedule.query.get_or_404(sch_id)
+    if sch.user_id != current_user.id:
+        flash("无操作权限")
+        return redirect(url_for("my_schedule"))
+
+    # 生成待审批请假单
+    req = ShiftRequest(
+        applicant_id = current_user.id,
+        schedule_id = sch_id,
+        type = "请假申请",
+        status = "待审批"
+    )
+    db.session.add(req)
+    db.session.commit()
+    flash("✅ 请假申请已提交，等待管理员审批")
+    return redirect(url_for("my_schedule"))
+
+# ==================== 换班选择页面（严格筛选【有意向 + 未排班】人员）====================
+@app.route('/staff_change_select/<int:sch_id>')
+@login_required
+def staff_change_select(sch_id):
+    sch = Schedule.query.get_or_404(sch_id)
+    if sch.user_id != current_user.id:
+        flash("无操作权限")
+        return redirect(url_for("my_schedule"))
+
+    target_date = sch.date
+    target_slot = sch.slot
+
+    # 1.查询：该日期+该时段 所有提交过选班意向的人员
+    intent_list = SelectIntent.query.filter_by(date=target_date, slot=target_slot).all()
+    intent_uid_set = {item.user_id for item in intent_list}
+
+    # 2.查询：该日期+该时段 已经被安排排班的人员
+    used_uid_set = set()
+    used_sch = Schedule.query.filter_by(date=target_date, slot=target_slot, status="已确认").all()
+    for s in used_sch:
+        used_uid_set.add(s.user_id)
+
+    # 3.筛选规则：有意向 + 未被排班 + 不是自己
+    candidate_users = []
+    for uid in intent_uid_set:
+        if uid == current_user.id:
+            continue
+        if uid in used_uid_set:
+            continue
+        user = User.query.get(uid)
+        if user:
+            candidate_users.append(user)
+
+    return render_template("change_select.html", now_sch=sch, user_list=candidate_users)
+
+# ==================== 确认换班提交（后台置换排班人）====================
+@app.route('/staff_change_do/<int:sch_id>/<int:target_uid>')
+@login_required
+def staff_change_do(sch_id, target_uid):
+    sch = Schedule.query.get_or_404(sch_id)
+    if sch.user_id != current_user.id:
+        flash("无操作权限")
+        return redirect(url_for("my_schedule"))
+
+    # 置换排班人员
+    sch.user_id = target_uid
+    db.session.commit()
+    flash("✅ 换班完成，班次人员已更新")
+    return redirect(url_for("my_schedule"))
+    
 # ==================== 提交申请（选班=存意向，请假换班=审批）====================
 @app.route('/submit_request', methods=['POST'])
 @login_required
