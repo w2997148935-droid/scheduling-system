@@ -1,13 +1,24 @@
-{% extends "base.html" %}
-{% block content %}
-<h3>全体人员</h3>
-{% for u in users %}
-<div class="border p-2 mb-2">
-    {{u.name}} | {{u.role}}
-    {% if u.role != 'admin' %}
-    <a href="/set_admin/{{u.id}}" class="btn btn-sm btn-warning">设为管理员</a>
-    {% endif %}
-</div>
-{% endfor %}
-<a href="/admin" class="btn btn-sm btn-primary">返回</a>
-{% endblock %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>全体人员名单</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>全体人员名单</h3>
+        <a href="/admin" class="btn btn-primary btn-sm">返回管理员后台</a>
+    </div>
+
+    {% for u in users %}
+    <div class="border p-3 mb-2 d-flex justify-content-between align-items-center">
+        <div>
+            姓名：{{ u.name }} &nbsp;&nbsp; 账号：{{ u.username }} &nbsp;&nbsp; 角色：{{ u.role }}
+        </div>
+        {% if u.role != 'admin' %}
+        <a href="/set_admin/{{ u.id }}" class="btn btn-warning btn-sm">设为管理员</a>
+        {% endif %}
+    </div>
+    {% endfor %}
+</body>
+</html>
