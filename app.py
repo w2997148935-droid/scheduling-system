@@ -580,6 +580,24 @@ def set_group(uid):
     db.session.commit()
     flash(f'已将 {user.name} 分组改为：{group}')
     return redirect(url_for('user_list'))
+
+# ==================== 值班次数归零（清空所有已确认排班）====================
+@app.route('/reset_stats')
+@login_required
+def reset_stats():
+    if current_user.role != 'admin':
+        return redirect(url_for('staff'))
+    
+    try:
+        # 清空所有已确认排班 → 次数自动归零
+        Schedule.query.filter_by(status='已确认').delete()
+        db.session.commit()
+        flash('✅ 所有值班次数已归零！')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ 归零失败：{str(e)}')
+    
+    return redirect(url_for('stats_page'))
     
 # 启动服务（Render端口兼容）
 if __name__ == '__main__':
