@@ -441,15 +441,14 @@ def generate_schedule():
         start_date = request.form.get('start_date')
         end_date = request.form.get('end_date')
         need_num = int(request.form.get('need_num', 1))
-        group = request.form.get('group', '').strip()  # 分组功能保留
+        group = request.form.get('group', '').strip()
+        max_per_day = int(request.form.get('max_per_day', 1))  # 每日最多班次
 
-        # --------------------------
-        # 修复外键报错：先删除关联数据
-        # --------------------------
+        # ========== 修复外键报错 ==========
         ShiftRequest.query.delete()
         Schedule.query.filter_by(status='已确认').delete()
 
-        # 生成日期范围
+        # 日期列表
         s_date = datetime.strptime(start_date, '%Y-%m-%d')
         e_date = datetime.strptime(end_date, '%Y-%m-%d')
         date_list = []
@@ -457,40 +456,52 @@ def generate_schedule():
             date_list.append(s_date.strftime('%Y-%m-%d'))
             s_date += timedelta(days=1)
 
-        # 生成排班（保留分组过滤）
+        # 全局计数：实现平均分配
+        user_total_count = {}
+
+        # 开始排班
         for date in date_list:
-            for slot in range(1,7):
+            # 每日计数
+            user_day_count = {}
+
+            for slot in range(1, 7):
                 intents = SelectIntent.query.filter_by(date=date, slot=slot).all()
-
-                user_ids = []
+                candidates = []
                 for i in intents:
-                    user = User.query.get(i.user_id)
-                    if user:
-                        # ======================
-                        # 分组排班逻辑 正常生效
-                        # ======================
-                        if not group or user.group == group:
-                            user_ids.append(user.id)
+                    u = User.query.get(i.user_id)
+                    if u:
+                        if group and u.group != group:
+                            continue
+                        # 每日上限判断
+                        day_c = user_day_count.get(u.id, 0)
+                        if day_c >= max_per_day:
+                            continue
+                        candidates.append(u)
 
-                unique_ids = list(set(user_ids))[:need_num]
+                # 去重
+                candidates = list({u.id: u for u in candidates}.values())
 
-                for uid in unique_ids:
-                    sch = Schedule(
-                        user_id=uid,
-                        date=date,
-                        slot=slot,
-                        status='已确认'
-                    )
+                # 按【总班次最少】排序 → 实现平均
+                candidates.sort(key=lambda x: user_total_count.get(x.id, 0))
+
+                # 选取需要人数
+                selected = candidates[:need_num]
+
+                for u in selected:
+                    sch = Schedule(user_id=u.id, date=date, slot=slot, status='已确认')
                     db.session.add(sch)
+                    user_day_count[u.id] = user_day_count.get(u.id, 0) + 1
+                    user_total_count[u.id] = user_total_count.get(u.id, 0) + 1
 
         db.session.commit()
-        flash("✅ 排班生成成功！")
+        flash(f"✅ 排班成功！每日每人最多{max_per_day}次，已平均分配")
 
     except Exception as e:
         db.session.rollback()
-        flash(f"❌ 生成失败：{str(e)}")
+        flash(f"❌ 失败：{str(e)}")
 
     return redirect(url_for('admin'))
+    
 # ==================== 新增：独立页面 - 全体人员列表 ====================
 @app.route('/users')
 @login_required
@@ -506,6 +517,7 @@ def user_list():
         count_data[s.user_id] = count_data.get(s.user_id, 0) + 1
 
     return render_template('users.html', users=users, count_data=count_data)
+    
 # ==================== 新增：独立页面 - 值班统计 ====================
 @app.route('/stats')
 @login_required
