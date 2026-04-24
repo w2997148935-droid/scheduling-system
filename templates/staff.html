@@ -51,31 +51,101 @@
         </div>
     </div>
     
-    <div class="mt-3 mb-3">
-    <a href="/my_schedule" class="btn btn-primary">我的班次（请假/换班）</a>
-    </div>
+    <!-- 请假/换班申请卡片 -->
+<div class="card mt-3">
+    <!-- 卡片头部：黄色背景，深色文字 -->
+    <div class="card-header bg-warning text-dark">请假/换班（需审批）</div>
+    <!-- 卡片主体 -->
+    <div class="card-body">
+        <!-- 申请提交表单，POST提交 -->
+        <form method="POST" action="/submit_request">
+            <!-- 选择申请类型：请假/换班 -->
+            <select name="type" id="req_type" class="form-control mb-2" required>
+                <option value="">请选择</option>
+                <option value="请假">请假</option>
+                <option value="换班">换班</option>
+            </select>
 
-    <!-- 请假/换班 -->
-    <div class="card mt-3">
-        <div class="card-header bg-warning text-dark">请假/换班（需审批）</div>
-        <div class="card-body">
-            <form method="POST" action="/submit_request">
-                <select name="type" class="form-control mb-2" required>
-                    <option value="">请选择</option>
-                    <option value="请假">请假</option>
-                    <option value="换班">换班</option>
-                </select>
-                <select name="schedule_id" class="form-control mb-2" required>
-                    <option value="">我的班次</option>
-                    {% for s in my_schedules %}
-                    <option value="{{ s.id }}">{{ s.date }} 第{{ s.slot }}节</option>
-                    {% endfor %}
-                </select>
-                <textarea name="reason" class="form-control mb-2" placeholder="理由" required></textarea>
-                <button class="btn btn-primary w-100">提交申请</button>
-            </form>
-        </div>
+            <!-- 选择要操作的班次（自动同步最新排班） -->
+            <select name="schedule_id" id="schedule_select" class="form-control mb-2" required>
+                <option value="">我的班次</option>
+                <!-- 循环展示当前用户的所有班次（新排班自动同步） -->
+                {% for s in my_schedules %}
+                <option value="{{ s.id }}" data-date="{{ s.date }}" data-slot="{{ s.slot }}">
+                    {{ s.date }} 第{{ s.slot }}节
+                </option>
+                {% endfor %}
+            </select>
+
+            <!-- 选择可换班员工（选择换班时才显示） -->
+            <select name="target_uid" id="target_user" class="form-control mb-2" style="display:none;">
+                <option value="">选择可换班员工</option>
+                <!-- 由JS自动加载符合条件的员工 -->
+            </select>
+
+            <!-- 申请理由输入框 -->
+            <textarea name="reason" class="form-control mb-2" placeholder="理由" required></textarea>
+            <!-- 提交申请按钮 -->
+            <button class="btn btn-primary w-100">提交申请</button>
+        </form>
     </div>
+</div>
+
+<!-- ===================== 换班智能筛选 JS ===================== -->
+<script>
+// 当选择“换班”时，显示可换班员工下拉框
+document.getElementById('req_type').addEventListener('change', function() {
+    let targetBox = document.getElementById('target_user');
+    if (this.value === '换班') {
+        targetBox.style.display = 'block';
+        loadAvailableUsers(); // 加载符合条件的可换班人员
+    } else {
+        targetBox.style.display = 'none';
+    }
+});
+
+// 班次切换时，重新加载可换班人员
+document.getElementById('schedule_select').addEventListener('change', function() {
+    if (document.getElementById('req_type').value === '换班') {
+        loadAvailableUsers();
+    }
+});
+
+// 加载可换班人员：同日期+同时段 | 有意向 | 未排班 | 不是自己
+function loadAvailableUsers() {
+    let opt = document.getElementById('schedule_select').selectedOptions[0];
+    let date = opt.dataset.date;
+    let slot = opt.dataset.slot;
+    let targetSel = document.getElementById('target_user');
+
+    // 清空旧选项
+    targetSel.innerHTML = '<option value="">选择可换班员工</option>';
+
+    // 遍历所有有意向的员工（前端自动匹配，不请求后端）
+    {% for intent in all_intents %}
+        let intent_date = "{{ intent.date }}";
+        let intent_slot = "{{ intent.slot }}";
+        let uid = "{{ intent.user_id }}";
+        let uname = "{{ intent.user_name }}";
+        let is_scheduled = false;
+
+        // 判断该员工是否已被排班
+        {% for sch in all_schedules %}
+            if ("{{ sch.date }}" == intent_date && "{{ sch.slot }}" == intent_slot && "{{ sch.user_id }}" == uid) {
+                is_scheduled = true;
+            }
+        {% endfor %}
+
+        // 满足条件：日期匹配 + 时段匹配 + 未排班 + 不是当前用户
+        if (intent_date == date && intent_slot == slot && !is_scheduled && uid != "{{ current_user.id }}") {
+            let op = document.createElement("option");
+            op.value = uid;
+            op.textContent = uname;
+            targetSel.appendChild(op);
+        }
+    {% endfor %}
+}
+</script>
 
     <script>
     // 修复多选+表单提交，唯一修改的脚本
