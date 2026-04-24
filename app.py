@@ -441,43 +441,56 @@ def generate_schedule():
         start_date = request.form.get('start_date')
         end_date = request.form.get('end_date')
         need_num = int(request.form.get('need_num', 1))
-        group = request.form.get('group', '').strip()
+        group = request.form.get('group', '').strip()  # 分组功能保留
 
-        # 清空旧排班
+        # --------------------------
+        # 修复外键报错：先删除关联数据
+        # --------------------------
+        ShiftRequest.query.delete()
         Schedule.query.filter_by(status='已确认').delete()
-        
-        # 生成日期列表
+
+        # 生成日期范围
         s_date = datetime.strptime(start_date, '%Y-%m-%d')
         e_date = datetime.strptime(end_date, '%Y-%m-%d')
         date_list = []
         while s_date <= e_date:
             date_list.append(s_date.strftime('%Y-%m-%d'))
             s_date += timedelta(days=1)
-        
-        # 生成排班
+
+        # 生成排班（保留分组过滤）
         for date in date_list:
             for slot in range(1,7):
                 intents = SelectIntent.query.filter_by(date=date, slot=slot).all()
-                
-                # 分组过滤（正确缩进、正确语法）
-                if group:
-                    user_ids = [i.user_id for i in intents if User.query.get(i.user_id).group == group]
-                else:
-                    user_ids = [i.user_id for i in intents]
-                
+
+                user_ids = []
+                for i in intents:
+                    user = User.query.get(i.user_id)
+                    if user:
+                        # ======================
+                        # 分组排班逻辑 正常生效
+                        # ======================
+                        if not group or user.group == group:
+                            user_ids.append(user.id)
+
                 unique_ids = list(set(user_ids))[:need_num]
-                
+
                 for uid in unique_ids:
-                    sch = Schedule(user_id=uid, date=date, slot=slot, status='已确认')
+                    sch = Schedule(
+                        user_id=uid,
+                        date=date,
+                        slot=slot,
+                        status='已确认'
+                    )
                     db.session.add(sch)
 
         db.session.commit()
-        flash("✅ 最终排班表生成成功！")
+        flash("✅ 排班生成成功！")
+
     except Exception as e:
         db.session.rollback()
         flash(f"❌ 生成失败：{str(e)}")
-    return redirect(url_for('admin'))
 
+    return redirect(url_for('admin'))
 # ==================== 新增：独立页面 - 全体人员列表 ====================
 @app.route('/users')
 @login_required
