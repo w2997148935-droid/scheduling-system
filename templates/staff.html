@@ -91,41 +91,40 @@
     </div>
 </div>
 
-<!-- ===================== 换班智能筛选 JS（修复版） ===================== -->
 <script>
-// 存储所有意向和排班（从后端传入）
+// 加载所有数据（由后台传入）
 const allIntents = [
     {% for i in all_intents %}
-    { user_id: "{{ i.user_id }}", date: "{{ i.date }}", slot: "{{ i.slot }}" } {% if not loop.last %},{% endif %}
+    { user_id: "{{ i.user_id }}", date: "{{ i.date }}", slot: "{{ i.slot }}" }{% if not loop.last %},{% endif %}
     {% endfor %}
 ];
 
 const allSchedules = [
     {% for s in all_schedules %}
-    { user_id: "{{ s.user_id }}", date: "{{ s.date }}", slot: "{{ s.slot }}" } {% if not loop.last %},{% endif %}
+    { user_id: "{{ s.user_id }}", date: "{{ s.date }}", slot: "{{ s.slot }}" }{% if not loop.last %},{% endif %}
     {% endfor %}
 ];
 
-// 切换类型时显示/隐藏人员选择
-document.getElementById('req_type').addEventListener('change', function() {
+// 切换类型
+document.getElementById('req_type').addEventListener('change', function () {
     const targetBox = document.getElementById('target_user');
     if (this.value === '换班') {
         targetBox.style.display = 'block';
-        refreshAvailableUsers();
+        refreshList();
     } else {
         targetBox.style.display = 'none';
     }
 });
 
 // 切换班次时刷新
-document.getElementById('schedule_select').addEventListener('change', function() {
+document.getElementById('schedule_select').addEventListener('change', function () {
     if (document.getElementById('req_type').value === '换班') {
-        refreshAvailableUsers();
+        refreshList();
     }
 });
 
-// 核心：加载可换班人员
-function refreshAvailableUsers() {
+// 核心筛选函数
+function refreshList() {
     const sel = document.getElementById('schedule_select');
     if (!sel.value) return;
 
@@ -135,26 +134,26 @@ function refreshAvailableUsers() {
     const targetSel = document.getElementById('target_user');
     targetSel.innerHTML = '<option value="">选择可换班员工</option>';
 
-    // 规则：同日期+同时段有意向 + 没被排班 + 不是自己
-    const candidates = {};
+    // 规则：有意向 & 未排班 & 不是自己
+    const candidateIds = {};
 
-    // 有意向的人
+    // 1. 找出该时段有意向的人
     allIntents.forEach(i => {
         if (i.date === date && i.slot === slot && i.user_id != "{{ current_user.id }}") {
-            candidates[i.user_id] = true;
+            candidateIds[i.user_id] = true;
         }
     });
 
-    // 排除已排班的人
+    // 2. 排除已排班的人
     allSchedules.forEach(s => {
         if (s.date === date && s.slot === slot) {
-            delete candidates[s.user_id];
+            delete candidateIds[s.user_id];
         }
     });
 
-    // 生成下拉框
+    // 3. 显示到下拉框
     {% for u in all_users %}
-    if (candidates["{{ u.id }}"]) {
+    if (candidateIds["{{ u.id }}"]) {
         const op = document.createElement("option");
         op.value = "{{ u.id }}";
         op.textContent = "{{ u.name }}";
@@ -163,7 +162,7 @@ function refreshAvailableUsers() {
     {% endfor %}
 }
 </script>
-
+    
     <script>
     // 修复多选+表单提交，唯一修改的脚本
     let selectedItems = [];
