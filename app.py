@@ -143,9 +143,15 @@ def staff():
     my_schedules = Schedule.query.filter_by(user_id=current_user.id, status='已确认').all()
     all_intents = SelectIntent.query.all()
     all_schedules = Schedule.query.filter_by(status='已确认').all()
-    return render_template('staff.html', dates=dates, my_schedules=my_schedules, requests=requests)
+    all_users = User.query.all()
+    return render_template('staff.html',
+        dates=dates,
+        my_schedules=my_schedules,
+        all_intents=all_intents,      # 必须传
+        all_schedules=all_schedules,  # 必须传
+        all_users=all_users           # 必须传
+    )
 
-    
 @app.route('/submit_free', methods=['POST'])
 @login_required
 def submit_free():
