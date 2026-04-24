@@ -91,58 +91,75 @@
     </div>
 </div>
 
-<!-- ===================== 换班智能筛选 JS ===================== -->
+<!-- ===================== 换班智能筛选 JS（修复版） ===================== -->
 <script>
-// 当选择“换班”时，显示可换班员工下拉框
+// 存储所有意向和排班（从后端传入）
+const allIntents = [
+    {% for i in all_intents %}
+    { user_id: "{{ i.user_id }}", date: "{{ i.date }}", slot: "{{ i.slot }}" } {% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+const allSchedules = [
+    {% for s in all_schedules %}
+    { user_id: "{{ s.user_id }}", date: "{{ s.date }}", slot: "{{ s.slot }}" } {% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// 切换类型时显示/隐藏人员选择
 document.getElementById('req_type').addEventListener('change', function() {
-    let targetBox = document.getElementById('target_user');
+    const targetBox = document.getElementById('target_user');
     if (this.value === '换班') {
         targetBox.style.display = 'block';
-        loadAvailableUsers(); // 加载符合条件的可换班人员
+        refreshAvailableUsers();
     } else {
         targetBox.style.display = 'none';
     }
 });
 
-// 班次切换时，重新加载可换班人员
+// 切换班次时刷新
 document.getElementById('schedule_select').addEventListener('change', function() {
     if (document.getElementById('req_type').value === '换班') {
-        loadAvailableUsers();
+        refreshAvailableUsers();
     }
 });
 
-// 加载可换班人员：同日期+同时段 | 有意向 | 未排班 | 不是自己
-function loadAvailableUsers() {
-    let opt = document.getElementById('schedule_select').selectedOptions[0];
-    let date = opt.dataset.date;
-    let slot = opt.dataset.slot;
-    let targetSel = document.getElementById('target_user');
+// 核心：加载可换班人员
+function refreshAvailableUsers() {
+    const sel = document.getElementById('schedule_select');
+    if (!sel.value) return;
 
-    // 清空旧选项
+    const opt = sel.selectedOptions[0];
+    const date = opt.dataset.date;
+    const slot = opt.dataset.slot;
+    const targetSel = document.getElementById('target_user');
     targetSel.innerHTML = '<option value="">选择可换班员工</option>';
 
-    // 遍历所有有意向的员工（前端自动匹配，不请求后端）
-    {% for intent in all_intents %}
-        let intent_date = "{{ intent.date }}";
-        let intent_slot = "{{ intent.slot }}";
-        let uid = "{{ intent.user_id }}";
-        let uname = "{{ intent.user_name }}";
-        let is_scheduled = false;
+    // 规则：同日期+同时段有意向 + 没被排班 + 不是自己
+    const candidates = {};
 
-        // 判断该员工是否已被排班
-        {% for sch in all_schedules %}
-            if ("{{ sch.date }}" == intent_date && "{{ sch.slot }}" == intent_slot && "{{ sch.user_id }}" == uid) {
-                is_scheduled = true;
-            }
-        {% endfor %}
-
-        // 满足条件：日期匹配 + 时段匹配 + 未排班 + 不是当前用户
-        if (intent_date == date && intent_slot == slot && !is_scheduled && uid != "{{ current_user.id }}") {
-            let op = document.createElement("option");
-            op.value = uid;
-            op.textContent = uname;
-            targetSel.appendChild(op);
+    // 有意向的人
+    allIntents.forEach(i => {
+        if (i.date === date && i.slot === slot && i.user_id != "{{ current_user.id }}") {
+            candidates[i.user_id] = true;
         }
+    });
+
+    // 排除已排班的人
+    allSchedules.forEach(s => {
+        if (s.date === date && s.slot === slot) {
+            delete candidates[s.user_id];
+        }
+    });
+
+    // 生成下拉框
+    {% for u in all_users %}
+    if (candidates["{{ u.id }}"]) {
+        const op = document.createElement("option");
+        op.value = "{{ u.id }}";
+        op.textContent = "{{ u.name }}";
+        targetSel.appendChild(op);
+    }
     {% endfor %}
 }
 </script>
