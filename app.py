@@ -70,7 +70,6 @@ class ShiftRequest(db.Model):
     schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=True)
     target_user_id = db.Column(db.Integer, nullable=True)
     type = db.Column(db.String(20), nullable=False)
-    target_uid = db.Column(db.Integer)
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
@@ -194,7 +193,7 @@ def submit_request():
             sch_id = int(request.form.get('schedule_id'))
             reason = request.form.get('reason', '')
             # 把理由拼到类型里，不新增字段
-            target_uid = request.form.get('target_uid')
+            target_user_uid = request.form.get('target_user_uid')
             full_type = f"{req_type}：{reason}" if reason else req_type
             
             req = ShiftRequest(
@@ -232,7 +231,7 @@ def approve_request(rid):
 
     elif req.type == '换班申请':
         # 换班通过：直接替换排班人员
-        sch.user_id = req.target_uid  # 关键：换人
+        sch.user_id = req.target_user_uid  # 关键：换人
         flash('✅ 换班已批准，班次已变更')
 
     # 申请改为已通过
