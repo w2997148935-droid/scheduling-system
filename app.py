@@ -70,6 +70,7 @@ class ShiftRequest(db.Model):
     schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=True)
     target_user_id = db.Column(db.Integer, nullable=True)
     type = db.Column(db.String(20), nullable=False)
+    target_uid = db.Column(db.Integer)
     status = db.Column(db.String(20), default='待审批')
     approve_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
@@ -193,6 +194,7 @@ def submit_request():
             sch_id = int(request.form.get('schedule_id'))
             reason = request.form.get('reason', '')
             # 把理由拼到类型里，不新增字段
+            target_uid = request.form.get('target_uid')
             full_type = f"{req_type}：{reason}" if reason else req_type
             
             req = ShiftRequest(
@@ -214,15 +216,29 @@ def submit_request():
     return redirect(url_for('staff'))
 
 # ==================== 新增：请假/换班审批接口 ====================
-@app.route('/approve/<int:req_id>/<action>')
+@app.route('/approve_request/<int:rid>')
 @login_required
-def approve_request(req_id, action):
+def approve_request(rid):
     if current_user.role != 'admin':
         return redirect(url_for('staff'))
-    req = ShiftRequest.query.get_or_404(req_id)
-    req.status = '已同意' if action == 'ok' else '已拒绝'
+    
+    req = ShiftRequest.query.get_or_404(rid)
+    sch = Schedule.query.get(req.schedule_id)
+
+    if req.type == '请假申请':
+        # 请假通过：直接把原班次取消
+        sch.status = '请假'
+        flash('✅ 请假已批准，班次已取消')
+
+    elif req.type == '换班申请':
+        # 换班通过：直接替换排班人员
+        sch.user_id = req.target_uid  # 关键：换人
+        flash('✅ 换班已批准，班次已变更')
+
+    # 申请改为已通过
+    req.status = '已通过'
     db.session.commit()
-    flash('审批完成！')
+
     return redirect(url_for('admin'))
 
 
