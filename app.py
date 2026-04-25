@@ -215,27 +215,34 @@ def submit_request():
     return redirect(url_for('staff'))
 
 # ==================== 新增：请假/换班审批接口 ====================
-@app.route('/approve_request/<int:rid>')
+@app.route('/approve_request/<int:rid>', methods=['GET'])
 @login_required
 def approve_request(rid):
     if current_user.role != 'admin':
         return redirect(url_for('staff'))
-    
+
+    # 获取申请
     req = ShiftRequest.query.get_or_404(rid)
+
+    # 获取对应的班次
     sch = Schedule.query.get(req.schedule_id)
+    if not sch:
+        flash("❌ 班次不存在")
+        return redirect(url_for('admin'))
 
-    if req.type == '请假申请':
-        # 请假通过：直接把原班次取消
-        sch.status = '请假'
-        flash('✅ 请假已批准，班次已取消')
+    # ========== 请假通过 ==========
+    if req.type == "请假":
+        sch.status = "请假"
+        flash("✅ 请假已批准，班次已同步更新")
 
-    elif req.type == '换班申请':
-        # 换班通过：直接替换排班人员
-        sch.user_id = req.target_user_uid  # 关键：换人
-        flash('✅ 换班已批准，班次已变更')
+    # ========== 换班通过 ==========
+    elif req.type == "换班":
+        # 换班 → 直接修改排班表的人员
+        sch.user_id = req.target_user_id
+        flash("✅ 换班已批准，排班表已同步更新")
 
-    # 申请改为已通过
-    req.status = '已通过'
+    # 修改申请状态
+    req.status = "已通过"
     db.session.commit()
 
     return redirect(url_for('admin'))
