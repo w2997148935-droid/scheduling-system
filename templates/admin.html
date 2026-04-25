@@ -98,7 +98,7 @@
             {% for r in requests %}
                 <div class="border p-2 mb-2">
                     {{ user_dict[r.applicant_id] }} | {{ r.type }} | {{ r.status }}
-                    <a href="/approve/{{r.id}}/ok" class="btn btn-sm btn-success">同意</a>
+                    <a href="/approve_request/{{ item.id }}" class="btn btn-sm btn-success" onclick="return confirm('确认通过？')">通过</a>
                     <a href="/approve/{{r.id}}/no" class="btn btn-sm btn-danger">拒绝</a>
                 </div>
             {% else %}
