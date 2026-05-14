@@ -247,6 +247,15 @@ def approve_request(rid):
 
     return redirect(url_for('admin'))
 
+@app.route('/reject_request/<int:rid>')
+@login_required
+def reject_request(rid):
+    req = ShiftRequest.query.get_or_404(rid)
+    req.status = "已拒绝"
+    db.session.commit()
+    flash("✅ 已拒绝")
+    return redirect('/admin')
+
 
 # -------------------------- 管理员端 --------------------------
 @app.route('/admin')
