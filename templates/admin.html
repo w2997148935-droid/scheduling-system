@@ -67,14 +67,13 @@
                 </tr>
             </thead>
             <tbody>
-                <!-- 固定6个时段 -->
                 {% for slot in [1,2,3,4,5,6] %}
                 <tr>
                     <td class="fw-bold bg-light">第{{ slot }}时段</td>
                     {% for date in dates %}
                     <td>
                         {% for sch in schedules if sch.date == date and sch.slot == slot %}
-                        {{ user_dict[sch.user_id] }}<br>
+                            {{ user_dict[sch.user_id].name if sch.user_id in user_dict else '' }}<br>
                         {% endfor %}
                     </td>
                     {% endfor %}
@@ -91,15 +90,19 @@
     <a href="/stats" class="btn btn-info">值班次数统计</a>
 </div>
 
-    <!-- 5. 待审批申请 -->
+    <!-- 5. 待审批申请（✅ 已修复） -->
     <div class="card mt-3">
         <div class="card-header">待审批请假/换班</div>
         <div class="card-body">
             {% for r in requests %}
                 <div class="border p-2 mb-2">
-                    {{ user_dict[r.applicant_id] }} | {{ r.type }} | {{ r.status }}
-                    <a href="/approve_request/{{ user.id }}" class="btn btn-sm btn-success" onclick="return confirm('确认通过？')">通过</a>
-                    <a href="/approve/{{r.id}}/no" class="btn btn-sm btn-danger">拒绝</a>
+                    <!-- ✅ 修复：安全获取用户名 -->
+                    {{ user_dict[r.applicant_id].name if r.applicant_id in user_dict else '未知' }} 
+                    | {{ r.type }} | {{ r.status }}
+                    
+                    <!-- ✅ 修复：正确链接 r.id -->
+                    <a href="/approve_request/{{ r.id }}" class="btn btn-sm btn-success" onclick="return confirm('确认通过？')">通过</a>
+                    <a href="/reject_request/{{ r.id }}" class="btn btn-sm btn-danger">拒绝</a>
                 </div>
             {% else %}
                 <p>暂无审批</p>
