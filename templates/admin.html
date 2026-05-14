@@ -73,8 +73,10 @@
                     {% for date in dates %}
                     <td>
                         {% for sch in schedules if sch.date == date and sch.slot == slot %}
-                            {{ user_dict[sch.user_id].name if sch.user_id in user_dict else '' }}<br>
-                        {% endfor %}
+                       {% if sch.user_id in user_dict %}
+                        {{ user_dict[sch.user_id].name }}<br>
+                     {% endif %}
+                      {% endfor %}
                     </td>
                     {% endfor %}
                 </tr>
